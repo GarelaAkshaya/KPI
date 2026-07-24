@@ -1,0 +1,1 @@
+const express=require('express');const app=express();app.get('/',(q,s)=>s.send('IFHE KPI API'));app.listen(5000,()=>console.log('API on 5000'));
