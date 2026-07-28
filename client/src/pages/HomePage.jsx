@@ -19,12 +19,13 @@ export default function HomePage() {
 
   const dashboardModules = [
     {
-      title: "Upload Student Data",
+      title: "Student Data Management",
       description: "Import, parse, and synchronize comprehensive student records, enrollment metrics, and performance metrics.",
       icon: Users,
       gradient: "from-blue-600 to-indigo-600",
       accentColor: "indigo-500",
       badgeText: "Data Management",
+      targetRoute: "/students",
     },
     {
       title: "Upload Faculty Data",

@@ -1,1 +1,1 @@
-{"name":"ifhe-kpi-server","scripts":{"dev":"node app.js"},"dependencies":{"express":"^5.0.0"}}
+{"name":"ifhe-kpi-server","scripts":{"dev":"node app.js"},"dependencies":{"cors":"^2.8.6","express":"^5.2.1","multer":"^2.2.0","sqlite3":"^6.0.1","xlsx":"^0.18.5"}}
