@@ -17,19 +17,40 @@ function initDb() {
   `);
 }
 
+function parsePercentageValue(value) {
+  if (value === undefined || value === null) return null;
+
+  const text = String(value).trim();
+  if (text === '') return null;
+
+  const hasPercentSymbol = text.includes('%');
+  const numericText = text.replace(/[%\s]/g, '');
+  const parsed = Number(numericText);
+
+  if (!Number.isFinite(parsed)) return null;
+
+  if (hasPercentSymbol) {
+    return parsed;
+  }
+
+  if (parsed <= 1) {
+    return parsed * 100;
+  }
+
+  return parsed;
+}
+
 function normalizeStudentRows(rows) {
   return rows.map((row) => {
     const studentId = row['Student ID'] ?? row['student id'] ?? '';
     const studentName = row['Student Name'] ?? row['student name'] ?? '';
     const totalMarksValue = row['Total Marks (Out of 600)'] ?? row['total marks (out of 600)'] ?? 0;
-    const percentageValue = row['Percentage'] ?? row['percentage'];
+    const percentageValue = row['Percentage'] ?? row['percentage'] ?? row['Percentage (%)'] ?? row['percentage (%)'] ?? row['Percentage %'] ?? row['percentage %'];
 
     const totalMarks = Number(totalMarksValue) || 0;
 
-    let percentage;
-    if (percentageValue !== undefined && percentageValue !== null && String(percentageValue).trim() !== '') {
-      percentage = Number(percentageValue);
-    } else {
+    let percentage = parsePercentageValue(percentageValue);
+    if (percentage === null) {
       percentage = (totalMarks / 600) * 100;
     }
 

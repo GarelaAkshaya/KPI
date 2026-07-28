@@ -29,3 +29,25 @@ test('normalizes uploaded workbook rows into database-friendly records', () => {
   assert.equal(normalized[1].totalMarks, 300);
   assert.equal(normalized[1].percentage, 50);
 });
+
+test('parses percentages written as percentage strings or decimals', () => {
+  const rows = [
+    {
+      'Student ID': '1003',
+      'Student Name': 'Chetan Singh',
+      'Total Marks (Out of 600)': 480,
+      'Percentage (%)': '80%',
+    },
+    {
+      'student id': '1004',
+      'student name': 'Disha Patil',
+      'total marks (out of 600)': 330,
+      'percentage': '0.55',
+    },
+  ];
+
+  const normalized = normalizeStudentRows(rows);
+
+  assert.equal(normalized[0].percentage, 80);
+  assert.equal(normalized[1].percentage, 55);
+});
