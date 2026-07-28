@@ -25,6 +25,7 @@ export default function HomePage() {
       gradient: "from-blue-600 to-indigo-600",
       accentColor: "indigo-500",
       badgeText: "Data Management",
+      targetRoute: "/upload-students",
     },
     {
       title: "Upload Faculty Data",
