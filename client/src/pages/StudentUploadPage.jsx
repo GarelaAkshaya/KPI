@@ -139,36 +139,36 @@ export default function StudentUploadPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#F8FAFC] text-[#1E293B] flex flex-col">
       <Navbar />
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         <div className="mb-6">
           <button
             onClick={() => navigate('/home')}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-300 hover:text-white transition"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-[#64748B] hover:text-[#1E293B] transition"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Home
           </button>
         </div>
 
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 sm:p-8 shadow-2xl">
+        <section className="rounded-3xl border border-[#E2E8F0] bg-[#FFFFFF] p-6 sm:p-8 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
-            <div className="rounded-2xl bg-indigo-500/10 p-3 text-indigo-400">
+            <div className="rounded-2xl bg-[#EFF6FF] p-3 text-[#2563EB]">
               <FileSpreadsheet className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold text-white">Upload Student Data</h1>
-              <p className="text-sm text-slate-400">Select an Excel sheet with Student ID, Student Name, Total Marks, and Percentage columns.</p>
+              <h1 className="text-2xl font-extrabold text-[#1E293B]">Upload Student Data</h1>
+              <p className="text-sm text-[#64748B]">Select an Excel sheet with Student ID, Student Name, Total Marks, and Percentage columns.</p>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-950/80 px-6 py-12 text-center transition hover:border-indigo-400 hover:bg-slate-900">
-              <UploadCloud className="mb-4 h-10 w-10 text-indigo-400" />
-              <span className="text-lg font-semibold text-slate-100">Choose Excel File</span>
-              <span className="mt-2 text-sm text-slate-400">Supported formats: .xlsx, .xls, .csv</span>
+            <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-6 py-12 text-center transition hover:border-[#2563EB] hover:bg-[#EFF6FF]">
+              <UploadCloud className="mb-4 h-10 w-10 text-[#2563EB]" />
+              <span className="text-lg font-semibold text-[#1E293B]">Choose Excel File</span>
+              <span className="mt-2 text-sm text-[#64748B]">Supported formats: .xlsx, .xls, .csv</span>
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv"
@@ -178,7 +178,7 @@ export default function StudentUploadPage() {
             </label>
 
             {selectedFile && (
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+              <div className="rounded-2xl border border-[#10B981]/30 bg-[#10B981]/10 px-4 py-3 text-sm text-[#10B981]">
                 Selected file: <span className="font-semibold">{selectedFile.name}</span>
               </div>
             )}
@@ -187,16 +187,16 @@ export default function StudentUploadPage() {
               <button
                 type="submit"
                 disabled={isUploading}
-                className="rounded-2xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-2xl bg-[#2563EB] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3B82F6] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isUploading ? 'Uploading...' : 'Upload & Save'}
               </button>
-              <span className="text-sm text-slate-400">Records will be stored in the server database with the required attributes.</span>
+              <span className="text-sm text-[#64748B]">Records will be stored in the server database with the required attributes.</span>
             </div>
           </form>
 
           {message && (
-            <div className={`mt-6 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ${status === 'success' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/20 bg-rose-500/10 text-rose-300'}`}>
+            <div className={`mt-6 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm ${status === 'success' ? 'border-[#10B981]/30 bg-[#10B981]/10 text-[#10B981]' : 'border-rose-300 bg-rose-50 text-rose-600'}`}>
               {status === 'success' ? <CheckCircle2 className="mt-0.5 h-5 w-5" /> : <AlertCircle className="mt-0.5 h-5 w-5" />}
               <span>{message}</span>
             </div>
@@ -205,15 +205,15 @@ export default function StudentUploadPage() {
           {/* Student count and view button (always available) */}
           <div className="mt-4">
             <div className="flex items-center justify-between gap-4">
-              <div className="rounded-lg bg-slate-900/80 border border-slate-800 px-4 py-3 text-sm text-slate-200">
-                <span className="text-slate-400">Total Students: </span>
+              <div className="rounded-lg bg-[#EFF6FF] border border-[#DBEAFE] px-4 py-3 text-sm text-[#1E293B]">
+                <span className="text-[#64748B]">Total Students: </span>
                 <span className="font-semibold">{totalStudents !== null ? totalStudents : (loadingStudents ? 'Loading...' : '0')}</span>
               </div>
 
               <div>
                 <button
                   onClick={toggleShow}
-                  className="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500"
+                  className="rounded-2xl bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3B82F6]"
                 >
                   {loadingStudents ? 'Loading...' : (showTable ? 'Hide Students' : 'View Students')}
                 </button>
@@ -221,7 +221,7 @@ export default function StudentUploadPage() {
             </div>
 
             {fetchError && (
-              <div className="mt-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+              <div className="mt-3 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-600">
                 {fetchError}
               </div>
             )}
@@ -229,14 +229,14 @@ export default function StudentUploadPage() {
             {showTable && (
               <div className="mt-4">
                 {loadingStudents ? (
-                  <div className="flex items-center gap-2 text-sm text-slate-300">
-                    <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-slate-300 animate-spin" />
+                  <div className="flex items-center gap-2 text-sm text-[#64748B]">
+                    <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-[#2563EB] animate-spin" />
                     Loading students...
                   </div>
                 ) : (
                   <>
                     {students.length === 0 ? (
-                      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-6 text-sm text-slate-400">No student records found.</div>
+                      <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-6 text-sm text-[#64748B]">No student records found.</div>
                     ) : (
                       <StudentTable students={students} />
                     )}

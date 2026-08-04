@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+@theme {
+  --color-primary-blue: #2563EB;
+  --color-dark-blue: #1D4ED8;
+  --color-light-blue: #DBEAFE;
+  --color-app-bg: #F8FAFC;
+  --color-card-bg: #FFFFFF;
+  --color-sec-bg: #EFF6FF;
+  --color-text-primary: #1E293B;
+  --color-text-secondary: #64748B;
+  --color-border-custom: #E2E8F0;
+  --color-hover-blue: #3B82F6;
+  --color-success-green: #10B981;
+  --color-warning-orange: #F59E0B;
+}
+
 @layer utilities {
   .bg-radial-gradient {
     background-image: radial-gradient(circle at top left, var(--tw-gradient-stops));
@@ -13,16 +28,16 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #F8FAFC;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #CBD5E1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #94A3B8;
 }
 
 @keyframes pulseGlow {
@@ -39,3 +54,4 @@
 .animate-pulse-glow {
   animation: pulseGlow 4s infinite ease-in-out;
 }
+
