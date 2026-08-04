@@ -15,6 +15,19 @@ function initDb() {
       createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS laboratory_utilization (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      laboratory_name TEXT NOT NULL,
+      department TEXT NOT NULL,
+      academic_year TEXT NOT NULL,
+      session_date TEXT NOT NULL,
+      time_slot TEXT,
+      capacity INTEGER,
+      students_present INTEGER
+    );
+  `);
 }
 
 function parsePercentageValue(value) {
