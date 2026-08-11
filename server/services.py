@@ -340,11 +340,15 @@ def seed_initial_data(db: Session) -> None:
     # Seed Laboratory Utilization
     if db.query(models.LaboratoryUtilization).count() == 0:
         lab_records = [
-            models.LaboratoryUtilization(laboratory_name="Chemistry Lab 1", department="Biotechnology", academic_year="2024-25", session_date="2024-09-01", time_slot="09:00 - 11:00", capacity=40, students_present=34),
-            models.LaboratoryUtilization(laboratory_name="Physics Lab 2", department="Electronics & Communication Engineering", academic_year="2024-25", session_date="2024-09-03", time_slot="11:00 - 13:00", capacity=35, students_present=29),
-            models.LaboratoryUtilization(laboratory_name="Computer Lab 3", department="Computer Science & Engineering", academic_year="2024-25", session_date="2024-09-05", time_slot="14:00 - 16:00", capacity=50, students_present=46),
-            models.LaboratoryUtilization(laboratory_name="Microbiology Lab", department="Biotechnology", academic_year="2024-25", session_date="2024-09-07", time_slot="09:00 - 11:00", capacity=30, students_present=25),
-            models.LaboratoryUtilization(laboratory_name="Instrumentation Lab", department="Electronics & Communication Engineering", academic_year="2024-25", session_date="2024-09-09", time_slot="11:00 - 13:00", capacity=28, students_present=24)
+            models.LaboratoryUtilization(laboratory_name="LART", department="Computer Science & Engineering", academic_year="2024-25", session_date="2024-09-01", time_slot="09:00 - 11:00", capacity=45, students_present=41),
+            models.LaboratoryUtilization(laboratory_name="LLOCK", department="Electronics & Communication Engineering", academic_year="2024-25", session_date="2024-09-02", time_slot="11:00 - 13:00", capacity=40, students_present=38),
+            models.LaboratoryUtilization(laboratory_name="LIVIA", department="Computer Science & Engineering", academic_year="2024-25", session_date="2024-09-03", time_slot="14:00 - 16:00", capacity=50, students_present=47),
+            models.LaboratoryUtilization(laboratory_name="VLSI", department="Electronics & Communication Engineering", academic_year="2024-25", session_date="2024-09-04", time_slot="09:00 - 11:00", capacity=35, students_present=32),
+            models.LaboratoryUtilization(laboratory_name="R-111", department="Electrical & Electronics Engineering", academic_year="2024-25", session_date="2024-09-05", time_slot="11:00 - 13:00", capacity=42, students_present=39),
+            models.LaboratoryUtilization(laboratory_name="DF LAB", department="Computer Science & Engineering", academic_year="2024-25", session_date="2024-09-06", time_slot="14:00 - 16:00", capacity=38, students_present=35),
+            models.LaboratoryUtilization(laboratory_name="PHY LAB", department="Physics", academic_year="2024-25", session_date="2024-09-07", time_slot="09:00 - 11:00", capacity=40, students_present=36),
+            models.LaboratoryUtilization(laboratory_name="CHEM LAB", department="Chemistry", academic_year="2024-25", session_date="2024-09-08", time_slot="11:00 - 13:00", capacity=35, students_present=31),
+            models.LaboratoryUtilization(laboratory_name="BE LAB", department="Mechanical Engineering", academic_year="2024-25", session_date="2024-09-09", time_slot="14:00 - 16:00", capacity=30, students_present=27)
         ]
         db.add_all(lab_records)
         db.commit()

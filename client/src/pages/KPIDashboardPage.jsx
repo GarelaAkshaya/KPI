@@ -20,11 +20,15 @@ export default function KPIDashboardPage() {
   ];
 
   const laboratoryUtilizationData = [
-    { laboratoryName: 'Chemistry Lab 1', department: 'Chemistry', sessionDate: '2024-09-01', capacity: 40, studentsPresent: 34 },
-    { laboratoryName: 'Physics Lab 2', department: 'Physics', sessionDate: '2024-09-03', capacity: 35, studentsPresent: 29 },
-    { laboratoryName: 'Computer Lab 3', department: 'Computer Science', sessionDate: '2024-09-05', capacity: 50, studentsPresent: 46 },
-    { laboratoryName: 'Microbiology Lab', department: 'Biotechnology', sessionDate: '2024-09-07', capacity: 30, studentsPresent: 25 },
-    { laboratoryName: 'Instrumentation Lab', department: 'Electronics', sessionDate: '2024-09-09', capacity: 28, studentsPresent: 24 },
+    { laboratoryName: 'LART', department: 'Computer Science & Engineering', sessionDate: '2024-09-01', capacity: 45, studentsPresent: 41 },
+    { laboratoryName: 'LLOCK', department: 'Electronics & Communication Engineering', sessionDate: '2024-09-02', capacity: 40, studentsPresent: 38 },
+    { laboratoryName: 'LIVIA', department: 'Computer Science & Engineering', sessionDate: '2024-09-03', capacity: 50, studentsPresent: 47 },
+    { laboratoryName: 'VLSI', department: 'Electronics & Communication Engineering', sessionDate: '2024-09-04', capacity: 35, studentsPresent: 32 },
+    { laboratoryName: 'R-111', department: 'Electrical & Electronics Engineering', sessionDate: '2024-09-05', capacity: 42, studentsPresent: 39 },
+    { laboratoryName: 'DF LAB', department: 'Computer Science & Engineering', sessionDate: '2024-09-06', capacity: 38, studentsPresent: 35 },
+    { laboratoryName: 'PHY LAB', department: 'Physics', sessionDate: '2024-09-07', capacity: 40, studentsPresent: 36 },
+    { laboratoryName: 'CHEM LAB', department: 'Chemistry', sessionDate: '2024-09-08', capacity: 35, studentsPresent: 31 },
+    { laboratoryName: 'BE LAB', department: 'Mechanical Engineering', sessionDate: '2024-09-09', capacity: 30, studentsPresent: 27 },
   ];
 
   const utilizationPercentage = (capacity, studentsPresent) => {
