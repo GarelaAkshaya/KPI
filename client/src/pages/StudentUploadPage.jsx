@@ -48,19 +48,8 @@ export default function StudentUploadPage() {
 
       setStatus('success');
       setMessage(data.message || `Uploaded ${data.count} student records successfully.`);
-      // Prefer server returned totalStudents or count; otherwise fetch records
-      if (typeof data.totalStudents === 'number') {
-        setTotalStudents(data.totalStudents);
-      } else if (typeof data.count === 'number') {
-        setTotalStudents(data.count);
-      } else if (Array.isArray(data.students)) {
-        const processed = processRecords(data.students);
-        setStudents(processed);
-        setTotalStudents(processed.length);
-      } else {
-        // leave totalStudents null until user requests view
-        setTotalStudents(null);
-      }
+      // Always refresh the full student list after upload so old data remains visible
+      await fetchStudents();
       setSelectedFile(null);
       event.target.reset();
     } catch (error) {
