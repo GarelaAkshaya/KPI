@@ -301,14 +301,30 @@ def seed_initial_data(db: Session) -> None:
     # Seed Faculty
     if db.query(models.Faculty).count() == 0:
         faculty_members = [
-            models.Faculty(faculty_id="FAC001", name="Dr. A. Sharma", department="Computer Science & Engineering", experience=12.5, designation="Professor & HOD", email="asharma@ifhe.edu"),
-            models.Faculty(faculty_id="FAC002", name="Dr. R. Verma", department="Electronics & Communication Engineering", experience=10.0, designation="Associate Professor", email="rverma@ifhe.edu"),
-            models.Faculty(faculty_id="FAC003", name="Dr. K. Rao", department="Mechanical Engineering", experience=15.0, designation="Professor", email="krao@ifhe.edu"),
-            models.Faculty(faculty_id="FAC004", name="Prof. S. Nair", department="Electrical & Electronics Engineering", experience=8.0, designation="Assistant Professor", email="snair@ifhe.edu"),
-            models.Faculty(faculty_id="FAC005", name="Dr. P. Gupta", department="Biotechnology", experience=11.2, designation="Associate Professor", email="pgupta@ifhe.edu"),
-            models.Faculty(faculty_id="FAC006", name="Prof. M. Reddy", department="Civil Engineering", experience=6.5, designation="Assistant Professor", email="mreddy@ifhe.edu"),
-            models.Faculty(faculty_id="FAC007", name="Dr. V. Kapoor", department="Management Studies", experience=14.0, designation="Professor", email="vkapoor@ifhe.edu"),
-            models.Faculty(faculty_id="FAC008", name="Dr. N. Joshi", department="School of Law", experience=9.0, designation="Associate Professor", email="njoshi@ifhe.edu")
+            models.Faculty(faculty_id="FAC001", name="Dr. Sandeep Kumar Panda", department="Computer Science & Engineering", experience=0.0, designation="Professor, Professor in-charge", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC002", name="Dr. P. Rohini", department="Computer Science & Engineering", experience=0.0, designation="Associate Professor, HOD", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC003", name="Dr. K. Adi Narayana Reddy", department="Computer Science & Engineering", experience=0.0, designation="Associate Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC004", name="Dr. Kuncham Sreenivasa Rao", department="Computer Science & Engineering", experience=0.0, designation="Associate Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC005", name="Dr. Kotari Sridevi", department="Computer Science & Engineering", experience=0.0, designation="Associate Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC006", name="Dr. Srinivasu Badugu", department="Computer Science & Engineering", experience=0.0, designation="Associate Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC007", name="Dr. Sathya AR", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC008", name="Dr. J. VamsiNath", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC009", name="Dr. Vara Prasada Rao", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC010", name="Dr. R. Balamurali", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC011", name="Dr. P. Chakradhar", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC012", name="Dr. Kirankumar Eranki. L.N", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC013", name="Dr. S Prasanth Vaidya", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC014", name="Dr. T. Aruna Sri", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC015", name="Dr. Muni Sekhar Velpur", department="Computer Science & Engineering", experience=0.0, designation="Senior Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC016", name="Dr. Srinivasa Rao Kongara", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC017", name="Dr. B. Seetharamulu", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC018", name="Dr. Santosh Kumar Sahoo", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC019", name="Dr. Dileep Kumar Murala", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC020", name="Dr. K Bhargavi", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC021", name="Dr. Sowjanya Ramisetty", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC022", name="Dr. M. Priyadharshini", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Ph.D."),
+            models.Faculty(faculty_id="FAC023", name="Ms. Vippadapu Anitha", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Pursuing Ph.D."),
+            models.Faculty(faculty_id="FAC024", name="Dr. Sanjib Kumar Raul", department="Computer Science & Engineering", experience=0.0, designation="Assistant Professor", qualification="Ph.D."),
         ]
         db.add_all(faculty_members)
         db.commit()

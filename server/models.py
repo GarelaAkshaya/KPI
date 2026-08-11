@@ -36,7 +36,9 @@ class Faculty(Base):
     department = Column(String, nullable=False)
     experience = Column(Float, nullable=False, default=0.0)
     designation = Column(String, nullable=True)
+    qualification = Column(String, nullable=True)
     email = Column(String, nullable=True)
+    image_path = Column(String, nullable=True)
 
 
 class Department(Base):

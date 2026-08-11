@@ -34,7 +34,9 @@ class FacultyBase(BaseModel):
     department: str
     experience: float
     designation: Optional[str] = None
+    qualification: Optional[str] = None
     email: Optional[str] = None
+    image_path: Optional[str] = None
 
 
 class FacultyCreate(FacultyBase):

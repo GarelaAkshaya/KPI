@@ -94,6 +94,7 @@ export default function HomePage() {
       description: "Manage faculty profiles, research outputs, qualifications, workload, and performance metrics.",
       icon: UserCheck,
       badgeText: "Academic Ops",
+      targetRoute: "/faculty",
       iconBg: "bg-[#9333EA]/10",
       iconBorder: "border-[#9333EA]/30",
       iconColor: "text-[#9333EA]",
