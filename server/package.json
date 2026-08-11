@@ -1,1 +1,0 @@
-{"name":"ifhe-kpi-server","scripts":{"dev":"node app.js"},"dependencies":{"express":"^5.0.0","multer":"^2.2.0","xlsx":"^0.18.5"}}
