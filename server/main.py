@@ -9,8 +9,8 @@ import models
 import schemas
 import services
 
-# Create database tables automatically
-models.Base.metadata.create_all(bind=database.engine)
+# Create database tables automatically and apply any missing column migrations
+database.init_db()
 
 # Seed default initial data if tables are empty
 with database.SessionLocal() as db_session:
@@ -227,6 +227,55 @@ async def upload_students(
             status_code=500,
             content={
                 "message": "Failed to process the uploaded Excel file.",
+                "error": str(e)
+            }
+        )
+
+
+@app.post("/api/upload-attendance", response_model=schemas.UploadResponse)
+async def upload_attendance(
+    file: UploadFile = File(...),
+    db: Session = Depends(database.get_db)
+):
+    if not file or not file.filename:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Please upload a file."}
+        )
+
+    try:
+        contents = await file.read()
+        if not contents:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Uploaded file is empty."}
+            )
+
+        records, has_invalid_row = services.parse_attendance_excel_file(contents)
+
+        if not records:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Attendance Excel sheet is empty or could not be parsed."}
+            )
+
+        if has_invalid_row:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "One or more rows are missing Student ID or Student Name."}
+            )
+
+        saved_count = services.save_attendance_records(db, records)
+
+        return {
+            "message": "Student attendance records uploaded successfully.",
+            "count": saved_count
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Failed to process the uploaded Attendance Excel file.",
                 "error": str(e)
             }
         )

@@ -97,6 +97,166 @@ def normalize_student_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[st
     return normalized_records, has_invalid_row
 
 
+def normalize_attendance_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
+    normalized_records = []
+    has_invalid_row = False
+
+    for row in raw_rows:
+        keys_map = {str(k).strip().lower(): v for k, v in row.items()}
+
+        student_id_val = (
+            keys_map.get('student id') or 
+            keys_map.get('studentid') or 
+            keys_map.get('roll no') or
+            keys_map.get('roll no.') or
+            keys_map.get('roll number') or
+            keys_map.get('rollno') or
+            keys_map.get('enrollment no') or
+            keys_map.get('reg no') or
+            keys_map.get('reg_no') or
+            keys_map.get('registration no') or
+            keys_map.get('id') or 
+            ''
+        )
+        student_name_val = (
+            keys_map.get('student name') or 
+            keys_map.get('studentname') or 
+            keys_map.get('name of student') or
+            keys_map.get('name') or 
+            keys_map.get('student') or 
+            ''
+        )
+
+        student_id = str(student_id_val).strip() if not pd.isna(student_id_val) else ''
+        student_name = str(student_name_val).strip() if not pd.isna(student_name_val) else ''
+
+        if not student_id or not student_name:
+            has_invalid_row = True
+            continue
+
+        department_val = (
+            keys_map.get('department') or 
+            keys_map.get('dept') or 
+            keys_map.get('branch') or 
+            keys_map.get('stream') or 
+            'Computer Science & Engineering'
+        )
+        department = str(department_val).strip() if not pd.isna(department_val) else 'Computer Science & Engineering'
+
+        academic_year_val = (
+            keys_map.get('academic year') or 
+            keys_map.get('academicyear') or 
+            keys_map.get('academic_year') or 
+            keys_map.get('year') or 
+            keys_map.get('session') or 
+            '2024-25'
+        )
+        academic_year = str(academic_year_val).strip() if not pd.isna(academic_year_val) else '2024-25'
+
+        total_classes_val = (
+            keys_map.get('total classes') or 
+            keys_map.get('totalclasses') or 
+            keys_map.get('classes held') or 
+            keys_map.get('total held') or 
+            keys_map.get('total sessions') or 
+            keys_map.get('total days') or 
+            keys_map.get('total conducted') or 
+            keys_map.get('total') or 
+            None
+        )
+
+        attended_classes_val = (
+            keys_map.get('attended classes') or 
+            keys_map.get('attendedclasses') or 
+            keys_map.get('classes attended') or 
+            keys_map.get('total attended') or 
+            keys_map.get('attended') or 
+            keys_map.get('present') or 
+            keys_map.get('present days') or 
+            keys_map.get('present classes') or 
+            None
+        )
+
+        pct_val = (
+            keys_map.get('attendance percentage') or 
+            keys_map.get('attendance %') or 
+            keys_map.get('attendance(%)') or 
+            keys_map.get('attendance') or 
+            keys_map.get('percentage') or 
+            keys_map.get('percentage (%)') or 
+            keys_map.get('percentage %') or 
+            keys_map.get('att %') or 
+            keys_map.get('pct')
+        )
+        percentage = parse_percentage_value(pct_val)
+
+        try:
+            total_classes = int(round(float(total_classes_val))) if (total_classes_val is not None and not pd.isna(total_classes_val)) else None
+        except (ValueError, TypeError):
+            total_classes = None
+
+        try:
+            attended_classes = int(round(float(attended_classes_val))) if (attended_classes_val is not None and not pd.isna(attended_classes_val)) else None
+        except (ValueError, TypeError):
+            attended_classes = None
+
+        if total_classes is None and attended_classes is None and percentage is not None:
+            total_classes = 100
+            attended_classes = int(round(percentage))
+        elif total_classes is None:
+            total_classes = 100 if (attended_classes is not None and attended_classes > 0) else 0
+
+        if attended_classes is None and percentage is not None and total_classes > 0:
+            attended_classes = int(round((percentage / 100.0) * total_classes))
+        elif attended_classes is None:
+            attended_classes = 0
+
+        if percentage is None:
+            percentage = round((attended_classes / float(total_classes)) * 100.0, 2) if total_classes > 0 else 0.0
+
+        if math.isnan(percentage) or math.isinf(percentage):
+            percentage = 0.0
+
+        percentage = round(min(max(percentage, 0.0), 100.0), 2)
+
+        normalized_records.append({
+            "student_id": student_id,
+            "student_name": student_name,
+            "department": department,
+            "academic_year": academic_year,
+            "total_classes": total_classes,
+            "attended_classes": attended_classes,
+            "attendance_percentage": percentage
+        })
+
+    return normalized_records, has_invalid_row
+
+
+def parse_attendance_excel_file(file_contents: bytes) -> Tuple[List[Dict[str, Any]], bool]:
+    df = pd.read_excel(io.BytesIO(file_contents))
+    df = df.where(pd.notnull(df), None)
+    rows = df.to_dict(orient='records')
+    return normalize_attendance_rows(rows)
+
+
+def save_attendance_records(db: Session, records: List[Dict[str, Any]]) -> int:
+    db_records = [
+        models.StudentAttendance(
+            student_id=r['student_id'],
+            student_name=r['student_name'],
+            department=r['department'],
+            academic_year=r['academic_year'],
+            total_classes=r['total_classes'],
+            attended_classes=r['attended_classes'],
+            attendance_percentage=r['attendance_percentage']
+        )
+        for r in records
+    ]
+    db.add_all(db_records)
+    db.commit()
+    return len(records)
+
+
 def parse_excel_file(file_contents: bytes) -> Tuple[List[Dict[str, Any]], bool]:
     df = pd.read_excel(io.BytesIO(file_contents))
     # Replace NaN with empty string
