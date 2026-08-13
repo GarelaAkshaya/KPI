@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import Navbar from '../components/Navbar';
+import StudentAttendanceKPI from '../components/StudentAttendanceKPI';
 import { BarChart3, Calendar, Filter, AreaChart, PieChart, Layers, ArrowUpRight, Info } from 'lucide-react';
 
 export default function KPIDashboardPage() {
-  const [selectedKPI, setSelectedKPI] = useState('Student-Faculty Ratio');
+  const [selectedKPI, setSelectedKPI] = useState('Student Attendance');
   const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-25');
 
   const kpiOptions = [
+    'Student Attendance',
     'Student-Faculty Ratio',
     'Pass Percentage',
     'Laboratory Utilization',
@@ -165,10 +167,12 @@ export default function KPIDashboardPage() {
           </div>
         </section>
 
-        {/* Large Graph Placeholder Section */}
+        {/* Main KPI Content Section */}
         <section>
-          <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-3xl p-6 sm:p-8 shadow-sm">
-            {selectedKPI === 'Laboratory Utilization' ? (
+          {selectedKPI === 'Student Attendance' ? (
+            <StudentAttendanceKPI academicYear={selectedAcademicYear} />
+          ) : selectedKPI === 'Laboratory Utilization' ? (
+            <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-3xl p-6 sm:p-8 shadow-sm">
               <div className="space-y-6">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -258,7 +262,9 @@ export default function KPIDashboardPage() {
                   </div>
                 </div>
               </div>
-            ) : (
+            </div>
+          ) : (
+            <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-3xl p-6 sm:p-8 shadow-sm">
               <div className="relative min-h-[420px] flex flex-col items-center justify-center text-center">
                 <div className="absolute inset-0 opacity-20 pointer-events-none flex items-center justify-center">
                   <svg className="w-full h-full text-[#2563EB]" viewBox="0 0 800 400" fill="none" stroke="currentColor">
@@ -304,8 +310,8 @@ export default function KPIDashboardPage() {
                   </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </section>
 
       </main>

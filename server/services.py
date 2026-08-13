@@ -504,11 +504,18 @@ def seed_initial_data(db: Session) -> None:
     # Seed Student Attendance
     if db.query(models.StudentAttendance).count() == 0:
         attendance_records = [
-            models.StudentAttendance(student_id="STU101", student_name="Aarav Sharma", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=88, attendance_percentage=88.0),
-            models.StudentAttendance(student_id="STU102", student_name="Ananya Rao", department="Electronics & Communication Engineering", academic_year="2024-25", total_classes=100, attended_classes=92, attendance_percentage=92.0),
-            models.StudentAttendance(student_id="STU103", student_name="Rohan Verma", department="Mechanical Engineering", academic_year="2024-25", total_classes=100, attended_classes=76, attendance_percentage=76.0),
+            models.StudentAttendance(student_id="STU101", student_name="Aarav Sharma", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=92, attendance_percentage=92.0),
+            models.StudentAttendance(student_id="STU102", student_name="Ananya Rao", department="Electronics & Communication Engineering", academic_year="2024-25", total_classes=100, attended_classes=88, attendance_percentage=88.0),
+            models.StudentAttendance(student_id="STU103", student_name="Rohan Verma", department="Mechanical Engineering", academic_year="2024-25", total_classes=100, attended_classes=72, attendance_percentage=72.0),
             models.StudentAttendance(student_id="STU104", student_name="Priya Patel", department="Biotechnology", academic_year="2024-25", total_classes=100, attended_classes=85, attendance_percentage=85.0),
-            models.StudentAttendance(student_id="STU105", student_name="Vikram Singh", department="Civil Engineering", academic_year="2024-25", total_classes=100, attended_classes=90, attendance_percentage=90.0)
+            models.StudentAttendance(student_id="STU105", student_name="Vikram Singh", department="Civil Engineering", academic_year="2024-25", total_classes=100, attended_classes=64, attendance_percentage=64.0),
+            models.StudentAttendance(student_id="STU106", student_name="Sneha Reddy", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=96, attendance_percentage=96.0),
+            models.StudentAttendance(student_id="STU107", student_name="Rahul Nair", department="Electrical & Electronics Engineering", academic_year="2024-25", total_classes=100, attended_classes=78, attendance_percentage=78.0),
+            models.StudentAttendance(student_id="STU108", student_name="Kavya Iyer", department="Electronics & Communication Engineering", academic_year="2024-25", total_classes=100, attended_classes=82, attendance_percentage=82.0),
+            models.StudentAttendance(student_id="STU109", student_name="Aditya Joshi", department="Mechanical Engineering", academic_year="2024-25", total_classes=100, attended_classes=58, attendance_percentage=58.0),
+            models.StudentAttendance(student_id="STU110", student_name="Meera Sen", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=89, attendance_percentage=89.0),
+            models.StudentAttendance(student_id="STU111", student_name="Divya Menon", department="Biotechnology", academic_year="2024-25", total_classes=100, attended_classes=76, attendance_percentage=76.0),
+            models.StudentAttendance(student_id="STU112", student_name="Karthik Raju", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=69, attendance_percentage=69.0),
         ]
         db.add_all(attendance_records)
         db.commit()
