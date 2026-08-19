@@ -470,6 +470,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
             <table className="min-w-full text-xs text-left">
               <thead className="bg-slate-50 sticky top-0 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
+                  <th className="p-3">S.No</th>
                   <th className="p-3">Enrollment Number</th>
                   <th className="p-3">Student Name</th>
                   <th className="p-3">Department</th>
@@ -485,6 +486,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                   const isEligible = pct >= 75;
                   return (
                     <tr key={item.student_id || idx} className="hover:bg-slate-50">
+                      <td className="p-3 text-slate-700">{idx + 1}</td>
                       <td className="p-3 font-bold text-slate-900">{item.enrollment_number || item.student_id}</td>
                       <td className="p-3 text-slate-800">{item.student_name}</td>
                       <td className="p-3 text-slate-600">{item.department}</td>

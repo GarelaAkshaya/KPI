@@ -83,9 +83,10 @@ class StudentAttendance(Base):
 
     @property
     def subjects(self):
-        return json.loads(self.subjects_json or '[]')
+        return [subject for subject in json.loads(self.subjects_json or '[]') if subject.lower() not in {'s.no', 's.no.', 's no', 'serial no', 'serial number'}]
 
     @property
     def subject_values(self):
-        return json.loads(self.subject_values_json or '{}')
+        ignored = {'s.no', 's.no.', 's no', 'serial no', 'serial number'}
+        return {key: value for key, value in json.loads(self.subject_values_json or '{}').items() if key.lower() not in ignored}
 

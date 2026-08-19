@@ -1,7 +1,8 @@
 import React from 'react';
 
 export default function AttendanceTable({ attendance }) {
-  const subjects = Array.from(new Set(attendance.flatMap((record) => record.subjects || [])));
+  const subjects = Array.from(new Set(attendance.flatMap((record) => record.subjects || [])))
+    .filter((subject) => !/^s\.?\s*no\.?$|^serial\s+(no|number)$/i.test(subject));
 
   return (
     <div className="mt-4 w-full">

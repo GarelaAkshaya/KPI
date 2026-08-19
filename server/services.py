@@ -120,6 +120,7 @@ def normalize_attendance_rows(raw_rows: List[Dict[str, Any]], headers: List[str]
     has_invalid_row = False
     header_keys = {header.lower(): header for header in headers}
     known_metadata = {
+        's.no', 's.no.', 's no', 'serial no', 'serial number',
         'student id', 'studentid', 'roll no', 'roll no.', 'roll number', 'rollno',
         'enrollment number', 'enrollment no', 'enrollment', 'reg no', 'reg_no', 'registration no', 'id', 'student name',
         'studentname', 'name of student', 'name', 'student', 'department', 'dept',
