@@ -21,24 +21,39 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-// High-fidelity fallback sample dataset if API is empty or offline
-const DEFAULT_ATTENDANCE_DATA = [
-  { id: 1, student_id: 'STU101', student_name: 'Aarav Sharma', department: 'Computer Science & Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 92, attendance_percentage: 92.0 },
-  { id: 2, student_id: 'STU102', student_name: 'Ananya Rao', department: 'Electronics & Communication Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 88, attendance_percentage: 88.0 },
-  { id: 3, student_id: 'STU103', student_name: 'Rohan Verma', department: 'Mechanical Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 72, attendance_percentage: 72.0 },
-  { id: 4, student_id: 'STU104', student_name: 'Priya Patel', department: 'Biotechnology', academic_year: '2024-25', total_classes: 100, attended_classes: 85, attendance_percentage: 85.0 },
-  { id: 5, student_id: 'STU105', student_name: 'Vikram Singh', department: 'Civil Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 64, attendance_percentage: 64.0 },
-  { id: 6, student_id: 'STU106', student_name: 'Sneha Reddy', department: 'Computer Science & Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 96, attendance_percentage: 96.0 },
-  { id: 7, student_id: 'STU107', student_name: 'Rahul Nair', department: 'Electrical & Electronics Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 78, attendance_percentage: 78.0 },
-  { id: 8, student_id: 'STU108', department: 'Electronics & Communication Engineering', student_name: 'Kavya Iyer', academic_year: '2024-25', total_classes: 100, attended_classes: 82, attendance_percentage: 82.0 },
-  { id: 9, student_id: 'STU109', student_name: 'Aditya Joshi', department: 'Mechanical Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 58, attendance_percentage: 58.0 },
-  { id: 10, student_id: 'STU110', student_name: 'Meera Sen', department: 'Computer Science & Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 89, attendance_percentage: 89.0 },
-  { id: 11, student_id: 'STU111', student_name: 'Divya Menon', department: 'Biotechnology', academic_year: '2024-25', total_classes: 100, attended_classes: 76, attendance_percentage: 76.0 },
-  { id: 12, student_id: 'STU112', student_name: 'Karthik Raju', department: 'Computer Science & Engineering', academic_year: '2024-25', total_classes: 100, attended_classes: 69, attendance_percentage: 69.0 },
-];
+const getAttendanceValue = (item) => item.average_attendance ?? item.attendance_percentage ?? 0;
+
+const SUBJECT_SHORTCUTS = {
+  'power skills': 'PS',
+  'power skills-iii': 'PS lll',
+  'power skills - iii': 'PS lll',
+  'power skills-lll': 'PS lll',
+  'power skills - lll': 'PS lll',
+  'principle of cryptography': 'POC',
+  'computer network': 'CN',
+  'computer networks': 'CN',
+  'programming language and compiler construction': 'PLCC',
+  'machine learning': 'ML',
+  'software engineering': 'SE',
+  'constitution of india': 'CI',
+  'special project': 'SP',
+};
+
+const getSubjectLabel = (subject) => {
+  const normalizedSubject = String(subject)
+    .trim()
+    .toLowerCase()
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*([-/])\s*/g, '$1');
+  return SUBJECT_SHORTCUTS[normalizedSubject]
+    || (normalizedSubject.startsWith('computer network') ? 'CN' : subject);
+};
+
+const isNonSubjectColumn = (subject) => /^s\.?\s*no\.?$/i.test(String(subject).trim());
 
 export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
-  const [attendanceData, setAttendanceData] = useState(DEFAULT_ATTENDANCE_DATA);
+  const [attendanceData, setAttendanceData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDept, setSelectedDept] = useState('All');
   const [hoveredStudent, setHoveredStudent] = useState(null);
@@ -55,7 +70,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
         const res = await fetch(`${API_BASE_URL}/api/attendance`);
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
+          if (Array.isArray(data)) {
             setAttendanceData(data);
           }
         }
@@ -75,6 +90,49 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
       return true;
     });
   }, [attendanceData, selectedDept]);
+
+  const subjectAverages = useMemo(() => {
+    const totals = new Map();
+    filteredData.forEach((student) => {
+      Object.entries(student.subject_values || {}).forEach(([subject, value]) => {
+        if (isNonSubjectColumn(subject)) return;
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) return;
+        const current = totals.get(subject) || { subject, sum: 0, count: 0 };
+        current.sum += numericValue;
+        current.count += 1;
+        totals.set(subject, current);
+      });
+    });
+    return Array.from(totals.values()).map((item) => ({
+      subject: item.subject,
+      label: getSubjectLabel(item.subject),
+      average: Math.round((item.sum / item.count) * 100) / 100,
+      count: item.count,
+    }));
+  }, [filteredData]);
+
+  const subjectDistribution = useMemo(() => {
+    const subjects = new Map();
+    filteredData.forEach((student) => {
+      Object.entries(student.subject_values || {}).forEach(([subject, value]) => {
+        if (isNonSubjectColumn(subject)) return;
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) return;
+        const current = subjects.get(subject) || { subject, eligible: 0, total: 0 };
+        current.total += 1;
+        if (numericValue >= 75) current.eligible += 1;
+        subjects.set(subject, current);
+      });
+    });
+    return Array.from(subjects.values()).map((item) => ({
+      subject: item.subject,
+      label: getSubjectLabel(item.subject),
+      eligible: Math.round((item.eligible / item.total) * 100),
+      belowTarget: Math.round(((item.total - item.eligible) / item.total) * 100),
+      count: item.total,
+    }));
+  }, [filteredData]);
 
   // Unique departments for filter dropdown
   const departmentOptions = useMemo(() => {
@@ -103,23 +161,23 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
     const totalClassesAttended = filteredData.reduce((sum, item) => sum + (item.attended_classes || 0), 0);
 
     const sumPercentage = filteredData.reduce((sum, item) => {
-      const pct = item.attendance_percentage ?? (item.total_classes > 0 ? (item.attended_classes / item.total_classes) * 100 : 0);
+      const pct = getAttendanceValue(item);
       return sum + pct;
     }, 0);
 
     const overallPercentage = Math.round((sumPercentage / totalStudents) * 10) / 10;
 
     const above75 = filteredData.filter((item) => {
-      const pct = item.attendance_percentage ?? (item.total_classes > 0 ? (item.attended_classes / item.total_classes) * 100 : 0);
+      const pct = getAttendanceValue(item);
       return pct >= 75;
     });
 
     const below75 = filteredData.filter((item) => {
-      const pct = item.attendance_percentage ?? (item.total_classes > 0 ? (item.attended_classes / item.total_classes) * 100 : 0);
+      const pct = getAttendanceValue(item);
       return pct < 75;
     });
 
-    const percentages = filteredData.map((item) => item.attendance_percentage ?? (item.total_classes > 0 ? (item.attended_classes / item.total_classes) * 100 : 0));
+    const percentages = filteredData.map(getAttendanceValue);
 
     return {
       overallPercentage,
@@ -145,7 +203,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
     ];
 
     filteredData.forEach((item) => {
-      const pct = item.attendance_percentage ?? (item.total_classes > 0 ? (item.attended_classes / item.total_classes) * 100 : 0);
+      const pct = getAttendanceValue(item);
       const bracket = brackets.find((b) => pct >= b.min && pct <= b.max);
       if (bracket) bracket.count += 1;
     });
@@ -412,7 +470,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
             <table className="min-w-full text-xs text-left">
               <thead className="bg-slate-50 sticky top-0 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
-                  <th className="p-3">Student ID</th>
+                  <th className="p-3">Enrollment Number</th>
                   <th className="p-3">Student Name</th>
                   <th className="p-3">Department</th>
                   <th className="p-3">Total Classes</th>
@@ -423,11 +481,11 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredData.map((item, idx) => {
-                  const pct = item.attendance_percentage ?? (item.total_classes > 0 ? (item.attended_classes / item.total_classes) * 100 : 0);
+                  const pct = getAttendanceValue(item);
                   const isEligible = pct >= 75;
                   return (
                     <tr key={item.student_id || idx} className="hover:bg-slate-50">
-                      <td className="p-3 font-bold text-slate-900">{item.student_id}</td>
+                      <td className="p-3 font-bold text-slate-900">{item.enrollment_number || item.student_id}</td>
                       <td className="p-3 text-slate-800">{item.student_name}</td>
                       <td className="p-3 text-slate-600">{item.department}</td>
                       <td className="p-3 text-slate-700">{item.total_classes}</td>
@@ -455,7 +513,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
         {/* --------------------------------------------------------- */}
-        {/* CHART 1: Attendance % by Student — Bar Chart              */}
+        {/* CHART 1: Average Attendance % by Subject — Bar Chart       */}
         {/* --------------------------------------------------------- */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
           <div>
@@ -465,8 +523,8 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                   <BarChart3 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">Attendance % by Student</h3>
-                  <p className="text-xs text-slate-500">Student-wise percentage with 75% baseline</p>
+                  <h3 className="font-extrabold text-slate-900 text-base">Average Attendance % by Subject</h3>
+                  <p className="text-xs text-slate-500">Subject-wise average with 75% baseline</p>
                 </div>
               </div>
               <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
@@ -478,11 +536,11 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
             <div className="flex items-center gap-4 text-xs font-semibold text-slate-600 my-3">
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-md bg-blue-600 inline-block" />
-                <span>Eligible (≥75%)</span>
+                  <span>On target (≥75%)</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-md bg-rose-500 inline-block" />
-                <span>Shortage (&lt;75%)</span>
+                  <span>Below target (&lt;75%)</span>
               </div>
               <div className="flex items-center gap-1.5 text-amber-600">
                 <span className="w-3.5 border-t-2 border-dashed border-amber-500 inline-block" />
@@ -520,11 +578,11 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                     Required 75% Threshold
                   </text>
 
-                  {/* Student Bars */}
-                  {filteredData.map((item, idx) => {
-                    const pct = item.attendance_percentage ?? (item.total_classes > 0 ? (item.attended_classes / item.total_classes) * 100 : 0);
+                  {/* Subject Bars */}
+                  {subjectAverages.map((item, idx) => {
+                    const pct = item.average;
                     const isEligible = pct >= 75;
-                    const barCount = filteredData.length || 1;
+                    const barCount = subjectAverages.length || 1;
                     const availableWidth = 470;
                     const slotWidth = availableWidth / barCount;
                     const barWidth = Math.min(Math.max(slotWidth * 0.65, 16), 34);
@@ -532,11 +590,11 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                     const barHeight = (pct / 100) * 160;
                     const y = 200 - barHeight;
 
-                    const isHovered = hoveredStudent?.student_id === item.student_id;
+                    const isHovered = hoveredStudent?.subject === item.subject;
 
                     return (
                       <g
-                        key={item.student_id || idx}
+                        key={item.subject}
                         className="cursor-pointer transition-all duration-200"
                         onMouseEnter={() => setHoveredStudent(item)}
                         onMouseLeave={() => setHoveredStudent(null)}
@@ -587,7 +645,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                           fill="#475569"
                           fontWeight={isHovered ? 'bold' : 'normal'}
                         >
-                          {item.student_name ? item.student_name.split(' ')[0] : item.student_id}
+                          {item.label}
                         </text>
                       </g>
                     );
@@ -602,21 +660,19 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
             {hoveredStudent ? (
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-900">{hoveredStudent.student_name}</span>
-                  <span className="text-slate-400 font-mono">({hoveredStudent.student_id})</span>
-                  <span className="text-slate-500">• {hoveredStudent.department}</span>
+                  <span className="font-bold text-slate-900">{hoveredStudent.label}</span>
+                  <span className="text-slate-500">• {hoveredStudent.count} student records</span>
                 </div>
                 <div className="flex items-center gap-2 font-bold">
-                  <span className="text-slate-700">{hoveredStudent.attended_classes} / {hoveredStudent.total_classes} Classes</span>
                   <span className={`px-2 py-0.5 rounded-full ${
-                    hoveredStudent.attendance_percentage >= 75 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                    hoveredStudent.average >= 75 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
                   }`}>
-                    {hoveredStudent.attendance_percentage}%
+                    {hoveredStudent.average}%
                   </span>
                 </div>
               </div>
             ) : (
-              <span className="text-slate-400 italic">Hover over any student bar to view detailed records.</span>
+              <span className="text-slate-400 italic">Hover over any subject bar to view its average.</span>
             )}
           </div>
         </div>
@@ -756,7 +812,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
         </div>
 
         {/* --------------------------------------------------------- */}
-        {/* CHART 3: Attended vs Total Classes — Bar Chart            */}
+        {/* CHART 3: Subject-wise Attendance Distribution — Bar Chart */}
         {/* --------------------------------------------------------- */}
         <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow">
           <div>
@@ -766,8 +822,8 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                   <TrendingUp className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">Attended vs Total Classes</h3>
-                  <p className="text-xs text-slate-500">Comparison of sessions held vs attended per student</p>
+                  <h3 className="font-extrabold text-slate-900 text-base">Subject-wise Attendance Distribution</h3>
+                  <p className="text-xs text-slate-500">Student distribution by subject against the 75% threshold</p>
                 </div>
               </div>
               <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
@@ -778,12 +834,12 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
             {/* Legend */}
             <div className="flex items-center gap-4 text-xs font-semibold text-slate-600 my-3">
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-md bg-slate-300 inline-block" />
-                <span>Total Classes Held</span>
+                <span className="w-3 h-3 rounded-md bg-emerald-500 inline-block" />
+                <span>At or above 75%</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-md bg-emerald-500 inline-block" />
-                <span>Classes Attended</span>
+                <span className="w-3 h-3 rounded-md bg-rose-500 inline-block" />
+                <span>Below 75%</span>
               </div>
             </div>
 
@@ -804,29 +860,26 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                     );
                   })}
 
-                  {/* Student Pairs */}
-                  {filteredData.map((item, idx) => {
-                    const totalCls = item.total_classes || 100;
-                    const attCls = item.attended_classes || 0;
-                    const barCount = filteredData.length || 1;
+                  {/* Subject Distribution Pairs */}
+                  {subjectDistribution.map((item, idx) => {
+                    const barCount = subjectDistribution.length || 1;
                     const availableWidth = 470;
                     const slotWidth = availableWidth / barCount;
                     const singleBarWidth = Math.min(Math.max(slotWidth * 0.36, 8), 16);
                     
                     const groupX = 45 + idx * slotWidth + (slotWidth - singleBarWidth * 2 - 4) / 2;
 
-                    // Height calculations (max scale = 100 classes)
-                    const totalHeight = (Math.min(totalCls, 100) / 100) * 160;
-                    const attendedHeight = (Math.min(attCls, 100) / 100) * 160;
+                    const eligibleHeight = (item.eligible / 100) * 160;
+                    const belowTargetHeight = (item.belowTarget / 100) * 160;
 
-                    const totalY = 200 - totalHeight;
-                    const attendedY = 200 - attendedHeight;
+                    const eligibleY = 200 - eligibleHeight;
+                    const belowTargetY = 200 - belowTargetHeight;
 
-                    const isHovered = hoveredCompare?.student_id === item.student_id;
+                    const isHovered = hoveredCompare?.subject === item.subject;
 
                     return (
                       <g
-                        key={item.student_id || idx}
+                        key={item.subject}
                         className="cursor-pointer"
                         onMouseEnter={() => setHoveredCompare(item)}
                         onMouseLeave={() => setHoveredCompare(null)}
@@ -844,24 +897,24 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                           />
                         )}
 
-                        {/* Total Classes Bar (Slate / Neutral) */}
+                        {/* At or above 75% Bar */}
                         <rect
                           x={groupX}
-                          y={totalY}
+                          y={eligibleY}
                           width={singleBarWidth}
-                          height={totalHeight}
+                          height={eligibleHeight}
                           rx="4"
-                          fill="#CBD5E1"
+                          fill="#10B981"
                         />
 
-                        {/* Attended Classes Bar (Emerald) */}
+                        {/* Below 75% Bar */}
                         <rect
                           x={groupX + singleBarWidth + 3}
-                          y={attendedY}
+                          y={belowTargetY}
                           width={singleBarWidth}
-                          height={attendedHeight}
+                          height={belowTargetHeight}
                           rx="4"
-                          fill={attCls / totalCls >= 0.75 ? '#10B981' : '#F59E0B'}
+                          fill="#EF4444"
                         />
 
                         {/* X-axis Label */}
@@ -873,7 +926,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
                           fill="#475569"
                           fontWeight={isHovered ? 'bold' : 'normal'}
                         >
-                          {item.student_name ? item.student_name.split(' ')[0] : item.student_id}
+                          {item.label}
                         </text>
                       </g>
                     );
@@ -888,16 +941,16 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
             {hoveredCompare ? (
               <div className="flex items-center justify-between w-full">
                 <span className="font-bold text-slate-900">
-                  {hoveredCompare.student_name} ({hoveredCompare.student_id})
+                  {hoveredCompare.label}
                 </span>
                 <div className="flex items-center gap-3 font-semibold">
-                  <span className="text-slate-500">Held: <strong className="text-slate-800">{hoveredCompare.total_classes}</strong></span>
-                  <span className="text-emerald-700">Attended: <strong>{hoveredCompare.attended_classes}</strong></span>
-                  <span className="text-rose-600">Missed: <strong>{hoveredCompare.total_classes - hoveredCompare.attended_classes}</strong></span>
+                  <span className="text-emerald-700">At/above 75%: <strong>{hoveredCompare.eligible}%</strong></span>
+                  <span className="text-rose-600">Below 75%: <strong>{hoveredCompare.belowTarget}%</strong></span>
+                  <span className="text-slate-500">Records: <strong className="text-slate-800">{hoveredCompare.count}</strong></span>
                 </div>
               </div>
             ) : (
-              <span className="text-slate-400 italic">Hover over any student group to view class counts.</span>
+              <span className="text-slate-400 italic">Hover over any subject group to view its attendance distribution.</span>
             )}
           </div>
         </div>

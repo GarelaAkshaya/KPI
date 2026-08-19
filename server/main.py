@@ -149,6 +149,22 @@ def get_attendance(db: Session = Depends(database.get_db)):
         )
 
 
+@app.get("/api/attendance/subjects", response_model=List[str])
+def get_attendance_subjects(db: Session = Depends(database.get_db)):
+    try:
+        return services.get_attendance_subjects(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve attendance subjects: {str(e)}")
+
+
+@app.get("/api/attendance/kpi")
+def get_attendance_kpi(db: Session = Depends(database.get_db)):
+    try:
+        return services.get_attendance_kpi(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve attendance KPI: {str(e)}")
+
+
 @app.post("/api/attendance", response_model=schemas.StudentAttendanceSchema, status_code=status.HTTP_201_CREATED)
 def create_attendance(att: schemas.StudentAttendanceCreate, db: Session = Depends(database.get_db)):
     try:
@@ -251,7 +267,7 @@ async def upload_attendance(
                 content={"message": "Uploaded file is empty."}
             )
 
-        records, has_invalid_row = services.parse_attendance_excel_file(contents)
+        records, has_invalid_row, subject_names = services.parse_attendance_excel_file(contents, file.filename)
 
         if not records:
             return JSONResponse(
@@ -262,14 +278,28 @@ async def upload_attendance(
         if has_invalid_row:
             return JSONResponse(
                 status_code=400,
-                content={"message": "One or more rows are missing Student ID or Student Name."}
+                content={"message": "One or more rows are missing an enrollment number."}
+            )
+
+        records, unmatched_enrollments = services.match_attendance_students(db, records)
+        if unmatched_enrollments:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "Attendance rows could not be matched to existing students by enrollment number.",
+                    "unmatched_enrollments": unmatched_enrollments
+                }
             )
 
         saved_count = services.save_attendance_records(db, records)
 
         return {
-            "message": "Student attendance records uploaded successfully.",
-            "count": saved_count
+            "message": "Student attendance uploaded successfully.",
+            "count": saved_count,
+            "students": saved_count,
+            "subjects": len(subject_names),
+            "subject_names": subject_names,
+            "average_attendance": services.get_attendance_kpi(db)['overall_average_attendance']
         }
     except Exception as e:
         return JSONResponse(

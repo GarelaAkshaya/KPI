@@ -45,6 +45,8 @@ export default function StudentUploadPage() {
   const [showAttendanceTable, setShowAttendanceTable] = useState(false);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [fetchAttendanceError, setFetchAttendanceError] = useState('');
+  const [attendanceSubjects, setAttendanceSubjects] = useState([]);
+  const [attendanceUploadSummary, setAttendanceUploadSummary] = useState(null);
 
   // Submit Student Marks
   const handleMarksSubmit = async (event) => {
@@ -118,7 +120,12 @@ export default function StudentUploadPage() {
       }
 
       setAttendanceStatus('success');
-      setAttendanceMessage(data.message || `Uploaded ${data.count} student attendance records successfully.`);
+      setAttendanceMessage(data.message || 'Student attendance uploaded successfully.');
+      setAttendanceUploadSummary({
+        students: data.students ?? data.count,
+        subjects: data.subjects ?? data.subject_names?.length ?? 0,
+      });
+      setAttendanceSubjects(data.subject_names || []);
       await fetchAttendance();
       setSelectedAttendanceFile(null);
       event.target.reset();
@@ -160,6 +167,7 @@ export default function StudentUploadPage() {
       if (!Array.isArray(data)) throw new Error('Invalid response from server.');
       setAttendanceList(data);
       setTotalAttendance(data.length);
+      setAttendanceSubjects(Array.from(new Set(data.flatMap((record) => record.subjects || []))));
     } catch (err) {
       setFetchAttendanceError(err.message || 'Error fetching attendance');
     } finally {
@@ -369,31 +377,30 @@ export default function StudentUploadPage() {
                   <Info className="w-5 h-5" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-bold text-[#1E293B] text-base mb-1">Expected Excel Attributes for Student Attendance</h3>
+                  <h3 className="font-bold text-[#1E293B] text-base mb-1">Attendance Sheet Format</h3>
                   <p className="text-sm text-[#64748B] mb-3">
-                    Your Excel sheet (.xlsx, .xls, or .csv) should have header column names matching the attributes below:
+                    Use the first column for each student name or identifier. Every remaining header is detected as a subject automatically.
                   </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                     <div className="rounded-xl bg-white border border-[#DBEAFE] p-3">
                       <div className="flex items-center gap-1.5 text-[#10B981] font-bold mb-1">
-                        <Check className="w-4 h-4" /> Required Columns
+                        <Check className="w-4 h-4" /> Student Identifier
                       </div>
                       <ul className="space-y-1 text-[#334155]">
-                        <li>• <span className="font-semibold text-[#1E293B]">Student ID</span> (e.g. Roll No / StudentID / ID)</li>
-                        <li>• <span className="font-semibold text-[#1E293B]">Student Name</span> (e.g. StudentName / Name)</li>
+                        <li>• Include an Enrollment Number column matching uploaded student details</li>
+                        <li>• Student names are filled from the matching student record</li>
                       </ul>
                     </div>
 
                     <div className="rounded-xl bg-white border border-[#DBEAFE] p-3">
                       <div className="flex items-center gap-1.5 text-[#2563EB] font-bold mb-1">
-                        <Layers className="w-4 h-4" /> Optional / Calculated Columns
+                        <Layers className="w-4 h-4" /> Dynamic Subject Columns
                       </div>
                       <ul className="space-y-1 text-[#334155]">
-                        <li>• <span className="font-semibold text-[#1E293B]">Total Classes</span> (defaults to 100 if not specified)</li>
-                        <li>• <span className="font-semibold text-[#1E293B]">Attended Classes</span> (classes present)</li>
-                        <li>• <span className="font-semibold text-[#1E293B]">Attendance %</span> (auto-calculated if classes given)</li>
-                        <li>• <span className="font-semibold text-[#1E293B]">Department</span> & <span className="font-semibold text-[#1E293B]">Academic Year</span></li>
+                        <li>• Subject headers and values are read from the uploaded file</li>
+                        <li>• Values are treated as attendance percentages from 0 to 100</li>
+                        <li>• Overall attendance is the average of valid subject values</li>
                       </ul>
                     </div>
                   </div>
@@ -454,9 +461,11 @@ export default function StudentUploadPage() {
               {/* Attendance count and view button */}
               <div className="mt-6 pt-6 border-t border-[#E2E8F0]">
                 <div className="flex items-center justify-between gap-4">
-                  <div className="rounded-lg bg-[#F0FDF4] border border-[#DCFCE7] px-4 py-3 text-sm text-[#1E293B]">
-                    <span className="text-[#64748B]">Total Attendance Records: </span>
-                    <span className="font-semibold text-[#16A34A]">{totalAttendance !== null ? totalAttendance : (loadingAttendance ? 'Loading...' : '0')}</span>
+                    <div className="rounded-lg bg-[#F0FDF4] border border-[#DCFCE7] px-4 py-3 text-sm text-[#1E293B]">
+                    <span className="text-[#64748B]">Students: </span>
+                    <span className="font-semibold text-[#16A34A]">{attendanceUploadSummary?.students ?? totalAttendance ?? (loadingAttendance ? 'Loading...' : '0')}</span>
+                    <span className="ml-4 text-[#64748B]">Subjects: </span>
+                    <span className="font-semibold text-[#16A34A]">{attendanceUploadSummary?.subjects ?? attendanceSubjects.length}</span>
                   </div>
 
                   <div>
@@ -464,7 +473,7 @@ export default function StudentUploadPage() {
                       onClick={toggleAttendanceTable}
                       className="rounded-2xl bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D]"
                     >
-                      {loadingAttendance ? 'Loading...' : (showAttendanceTable ? 'Hide Attendance Records' : 'View Attendance Records')}
+                      {loadingAttendance ? 'Loading...' : (showAttendanceTable ? 'Hide Students' : 'View Students')}
                     </button>
                   </div>
                 </div>

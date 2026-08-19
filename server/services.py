@@ -1,4 +1,5 @@
 import io
+import json
 import math
 from typing import List, Dict, Any, Tuple, Optional
 import pandas as pd
@@ -97,9 +98,49 @@ def normalize_student_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[st
     return normalized_records, has_invalid_row
 
 
-def normalize_attendance_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
+def _clean_header(value: Any) -> str:
+    return str(value).strip()
+
+
+def _is_missing(value: Any) -> bool:
+    return value is None or (isinstance(value, float) and math.isnan(value)) or pd.isna(value)
+
+
+def _attendance_subject_value(value: Any) -> Optional[float]:
+    if _is_missing(value) or str(value).strip() == '':
+        return None
+    parsed = parse_percentage_value(value)
+    if parsed is None or parsed < 0 or parsed > 100:
+        return None
+    return round(parsed, 2)
+
+
+def normalize_attendance_rows(raw_rows: List[Dict[str, Any]], headers: List[str]) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
     normalized_records = []
     has_invalid_row = False
+    header_keys = {header.lower(): header for header in headers}
+    known_metadata = {
+        'student id', 'studentid', 'roll no', 'roll no.', 'roll number', 'rollno',
+        'enrollment number', 'enrollment no', 'enrollment', 'reg no', 'reg_no', 'registration no', 'id', 'student name',
+        'studentname', 'name of student', 'name', 'student', 'department', 'dept',
+        'branch', 'stream', 'academic year', 'academicyear', 'academic_year', 'year',
+        'session', 'total classes', 'totalclasses', 'classes held', 'total held',
+        'total sessions', 'total days', 'total conducted', 'total', 'attended classes',
+        'attendedclasses', 'classes attended', 'total attended', 'attended', 'present',
+        'present days', 'present classes', 'attendance percentage', 'attendance %',
+        'attendance(%)', 'attendance', 'percentage', 'percentage (%)', 'percentage %',
+        'att %', 'pct'
+    }
+    normalized_headers = [header.lower() for header in headers]
+    explicit_name = next((header for header in headers if header.lower() in {'student name', 'studentname', 'name of student', 'name', 'student'}), None)
+    explicit_id = next((header for header in headers if header.lower() in {'enrollment number', 'enrollment no', 'enrollment', 'student id', 'studentid', 'roll no', 'roll no.', 'roll number', 'rollno', 'reg no', 'reg_no', 'registration no', 'id'}), None)
+    is_subject_matrix = len([header for header in headers if header.lower() not in known_metadata]) > 0
+    subject_headers = [header for header in headers if header.lower() not in known_metadata]
+    if not explicit_name and not explicit_id and headers:
+        explicit_name = headers[0]
+        subject_headers = headers[1:]
+        is_subject_matrix = True
+    subject_headers = list(dict.fromkeys(subject_headers))
 
     for row in raw_rows:
         keys_map = {str(k).strip().lower(): v for k, v in row.items()}
@@ -111,7 +152,9 @@ def normalize_attendance_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict
             keys_map.get('roll no.') or
             keys_map.get('roll number') or
             keys_map.get('rollno') or
-            keys_map.get('enrollment no') or
+            keys_map.get('enrollment number') or 
+            keys_map.get('enrollment no') or 
+            keys_map.get('enrollment') or 
             keys_map.get('reg no') or
             keys_map.get('reg_no') or
             keys_map.get('registration no') or
@@ -130,8 +173,40 @@ def normalize_attendance_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict
         student_id = str(student_id_val).strip() if not pd.isna(student_id_val) else ''
         student_name = str(student_name_val).strip() if not pd.isna(student_name_val) else ''
 
-        if not student_id or not student_name:
+        if explicit_name:
+            student_name = str(row.get(explicit_name, '')).strip() if not _is_missing(row.get(explicit_name)) else ''
+        elif explicit_id:
+            student_name = student_id
+        if not student_id and student_name:
+            student_id = student_name
+
+        if not student_id:
             has_invalid_row = True
+            continue
+
+        if is_subject_matrix:
+            subject_values = {}
+            for subject in subject_headers:
+                value = _attendance_subject_value(row.get(subject))
+                if value is not None:
+                    subject_values[subject] = value
+            if not subject_values:
+                has_invalid_row = True
+                continue
+            average = round(sum(subject_values.values()) / len(subject_values), 2)
+            normalized_records.append({
+                'student_id': student_id,
+                'enrollment_number': student_id,
+                'student_name': student_name,
+                'department': 'Computer Science & Engineering',
+                'academic_year': '2024-25',
+                'total_classes': len(subject_values) * 100,
+                'attended_classes': int(round(sum(subject_values.values()))),
+                'attendance_percentage': average,
+                'average_attendance': average,
+                'subjects': subject_headers,
+                'subject_values': subject_values,
+            })
             continue
 
         department_val = (
@@ -229,32 +304,76 @@ def normalize_attendance_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict
             "attendance_percentage": percentage
         })
 
-    return normalized_records, has_invalid_row
+    return normalized_records, has_invalid_row, subject_headers
 
 
-def parse_attendance_excel_file(file_contents: bytes) -> Tuple[List[Dict[str, Any]], bool]:
-    df = pd.read_excel(io.BytesIO(file_contents))
+def parse_attendance_excel_file(file_contents: bytes, filename: str = '') -> Tuple[List[Dict[str, Any]], bool, List[str]]:
+    if filename.lower().endswith('.csv'):
+        df = pd.read_csv(io.BytesIO(file_contents))
+    else:
+        df = pd.read_excel(io.BytesIO(file_contents))
     df = df.where(pd.notnull(df), None)
+    if df.empty or len(df.columns) == 0:
+        return [], False, []
+    headers = [_clean_header(header) for header in df.columns]
+    df.columns = headers
     rows = df.to_dict(orient='records')
-    return normalize_attendance_rows(rows)
+    return normalize_attendance_rows(rows, headers)
 
 
 def save_attendance_records(db: Session, records: List[Dict[str, Any]]) -> int:
+    db.query(models.StudentAttendance).delete(synchronize_session=False)
     db_records = [
         models.StudentAttendance(
             student_id=r['student_id'],
+            enrollment_number=r.get('enrollment_number', r['student_id']),
             student_name=r['student_name'],
             department=r['department'],
             academic_year=r['academic_year'],
             total_classes=r['total_classes'],
             attended_classes=r['attended_classes'],
-            attendance_percentage=r['attendance_percentage']
+            attendance_percentage=r['attendance_percentage'],
+            average_attendance=r.get('average_attendance', r['attendance_percentage']),
+            subjects_json=json.dumps(r.get('subjects', [])),
+            subject_values_json=json.dumps(r.get('subject_values', {}))
         )
         for r in records
     ]
     db.add_all(db_records)
     db.commit()
     return len(records)
+
+
+def match_attendance_students(db: Session, records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    students = db.query(models.StudentUpload).all()
+    student_by_enrollment = {
+        str(student.studentId).strip().casefold(): student
+        for student in students
+        if student.studentId and str(student.studentId).strip()
+    }
+    student_by_name = {
+        str(student.studentName).strip().casefold(): student
+        for student in students
+        if student.studentName and str(student.studentName).strip()
+    }
+    unmatched = []
+    matched_records = []
+
+    for record in records:
+        enrollment_number = str(record.get('enrollment_number') or record.get('student_id') or '').strip()
+        student = student_by_enrollment.get(enrollment_number.casefold())
+        if not student:
+            student_name = str(record.get('student_name') or '').strip()
+            student = student_by_name.get(student_name.casefold())
+        if not student:
+            unmatched.append(enrollment_number)
+            continue
+        record['student_id'] = str(student.studentId).strip()
+        record['enrollment_number'] = str(student.studentId).strip()
+        record['student_name'] = student.studentName
+        matched_records.append(record)
+
+    return matched_records, unmatched
 
 
 def parse_excel_file(file_contents: bytes) -> Tuple[List[Dict[str, Any]], bool]:
@@ -332,7 +451,9 @@ def get_average_student_marks(db: Session) -> float:
 
 
 def get_student_attendance_percentage(db: Session) -> float:
-    avg_att = db.query(func.avg(models.StudentAttendance.attendance_percentage)).scalar()
+    records = get_all_attendance(db)
+    values = [record.average_attendance for record in records]
+    avg_att = sum(values) / len(values) if values else None
     if avg_att is not None:
         return round(float(avg_att), 2)
     
@@ -411,16 +532,47 @@ def create_kpi(db: Session, kpi_data: Dict[str, Any]) -> models.KPI:
 
 # Student Attendance CRUD Services
 def get_all_attendance(db: Session) -> List[models.StudentAttendance]:
-    return db.query(models.StudentAttendance).all()
+    records = db.query(models.StudentAttendance).order_by(models.StudentAttendance.id.asc()).all()
+    for record in records:
+        if record.average_attendance is None:
+            record.average_attendance = record.attendance_percentage or 0.0
+        if record.subjects_json is None:
+            record.subjects_json = '[]'
+        if record.subject_values_json is None:
+            record.subject_values_json = '{}'
+    return records
+
+
+def get_attendance_subjects(db: Session) -> List[str]:
+    rows = db.query(models.StudentAttendance.subjects_json).order_by(models.StudentAttendance.id.desc()).first()
+    if not rows or not rows[0]:
+        return []
+    return json.loads(rows[0])
+
+
+def get_attendance_kpi(db: Session) -> Dict[str, Any]:
+    records = get_all_attendance(db)
+    values = [record.average_attendance for record in records]
+    return {
+        'total_students': len(records),
+        'overall_average_attendance': round(sum(values) / len(values), 2) if values else 0.0,
+        'highest_attendance': max(values) if values else 0.0,
+        'lowest_attendance': min(values) if values else 0.0,
+        'subjects': get_attendance_subjects(db),
+    }
 
 
 def create_attendance(db: Session, att_data: Dict[str, Any]) -> models.StudentAttendance:
+    att_data.pop('subjects', None)
+    att_data.pop('subject_values', None)
     if att_data.get("attendance_percentage") is None and att_data.get("total_classes", 0) > 0:
         total = att_data["total_classes"]
         attended = att_data.get("attended_classes", 0)
         att_data["attendance_percentage"] = round((attended / float(total)) * 100.0, 2)
     
     attendance = models.StudentAttendance(**att_data)
+    attendance.enrollment_number = attendance.enrollment_number or attendance.student_id
+    attendance.average_attendance = attendance.attendance_percentage
     db.add(attendance)
     db.commit()
     db.refresh(attendance)

@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, DateTime
+import json
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text
 from database import Base
 
 
@@ -69,10 +70,22 @@ class StudentAttendance(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     student_id = Column(String, nullable=False, index=True)
+    enrollment_number = Column(String, nullable=True, index=True)
     student_name = Column(String, nullable=False)
     department = Column(String, nullable=False)
     academic_year = Column(String, nullable=False)
     total_classes = Column(Integer, nullable=False, default=0)
     attended_classes = Column(Integer, nullable=False, default=0)
     attendance_percentage = Column(Float, nullable=False, default=0.0)
+    average_attendance = Column(Float, nullable=False, default=0.0)
+    subjects_json = Column(Text, nullable=False, default='[]')
+    subject_values_json = Column(Text, nullable=False, default='{}')
+
+    @property
+    def subjects(self):
+        return json.loads(self.subjects_json or '[]')
+
+    @property
+    def subject_values(self):
+        return json.loads(self.subject_values_json or '{}')
 

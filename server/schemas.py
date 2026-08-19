@@ -25,6 +25,10 @@ class StatsResponse(BaseModel):
 class UploadResponse(BaseModel):
     message: str
     count: int
+    students: Optional[int] = None
+    subjects: Optional[int] = None
+    subject_names: Optional[list[str]] = None
+    average_attendance: Optional[float] = None
 
 
 # Faculty Schemas
@@ -94,12 +98,16 @@ class KPISchema(KPIBase):
 # Student Attendance Schemas
 class StudentAttendanceBase(BaseModel):
     student_id: str
+    enrollment_number: Optional[str] = None
     student_name: str
     department: str
     academic_year: str
     total_classes: int
     attended_classes: int
     attendance_percentage: Optional[float] = None
+    average_attendance: Optional[float] = None
+    subjects: Optional[list[str]] = None
+    subject_values: Optional[dict[str, float]] = None
 
 
 class StudentAttendanceCreate(StudentAttendanceBase):
