@@ -22,6 +22,19 @@ class StatsResponse(BaseModel):
     isLive: bool
 
 
+class StudentFacultyRatioResponse(BaseModel):
+    totalStudents: int
+    totalFaculty: int
+    ratio: float
+    message: Optional[str] = None
+
+
+class StudentFacultyRatioTrendResponse(BaseModel):
+    data: list[dict[str, float | str]]
+    distribution: list[dict[str, float | str]]
+    message: Optional[str] = None
+
+
 class UploadResponse(BaseModel):
     message: str
     count: int

@@ -68,6 +68,28 @@ def get_kpi_summary(db: Session = Depends(database.get_db)):
         )
 
 
+@app.get("/api/kpis/student-faculty-ratio", response_model=schemas.StudentFacultyRatioResponse)
+def get_student_faculty_ratio(db: Session = Depends(database.get_db)):
+    try:
+        return services.get_student_faculty_ratio_data(db)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate student-faculty ratio: {str(e)}"
+        )
+
+
+@app.get("/api/kpis/student-faculty-ratio/trend", response_model=schemas.StudentFacultyRatioTrendResponse)
+def get_student_faculty_ratio_trend(db: Session = Depends(database.get_db)):
+    try:
+        return services.get_student_faculty_ratio_trend(db)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate student-faculty ratio trend: {str(e)}"
+        )
+
+
 # Stored KPI Endpoints
 @app.get("/api/kpis", response_model=List[schemas.KPISchema])
 def get_kpis(db: Session = Depends(database.get_db)):

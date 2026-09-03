@@ -412,6 +412,32 @@ def get_total_faculty(db: Session) -> int:
     return db.query(models.Faculty).count()
 
 
+def get_student_faculty_ratio_data(db: Session) -> Dict[str, Any]:
+    total_students = db.query(models.StudentUpload).count()
+    total_faculty = db.query(models.Faculty).count()
+    if total_faculty == 0:
+        return {
+            "totalStudents": total_students,
+            "totalFaculty": 0,
+            "ratio": 0.0,
+            "message": "Student-Faculty ratio is unavailable because no faculty records exist."
+        }
+
+    return {
+        "totalStudents": total_students,
+        "totalFaculty": total_faculty,
+        "ratio": round(total_students / float(total_faculty), 2)
+    }
+
+
+def get_student_faculty_ratio_trend(db: Session) -> Dict[str, Any]:
+    return {
+        "data": [],
+        "distribution": [],
+        "message": "Trend and ratio-range distribution require academic-year and department fields in the student and faculty source tables."
+    }
+
+
 def get_department_count(db: Session) -> int:
     dept_table_count = db.query(models.Department).count()
     if dept_table_count > 0:
