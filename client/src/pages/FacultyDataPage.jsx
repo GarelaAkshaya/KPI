@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
 import { ChevronRight, Users } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 export default function FacultyDataPage() {
   const [facultyData, setFacultyData] = useState([]);
@@ -14,7 +15,7 @@ export default function FacultyDataPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('http://localhost:5000/api/faculty');
+        const response = await fetch(`${API_BASE_URL}/api/faculty`);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch faculty data: ${response.statusText}`);

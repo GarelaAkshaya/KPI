@@ -4,6 +4,7 @@ import Navbar from '../components/Navbar';
 import DashboardCard from '../components/DashboardCard';
 import ComingSoonModal from '../components/ComingSoonModal';
 import { Users, UserCheck, Building2, LineChart, GraduationCap, Quote, ArrowUpRight, CheckCircle2 } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch('http://localhost:5000/api/stats');
+        const res = await fetch(`${API_BASE_URL}/api/stats`);
         if (res.ok) {
           const data = await res.json();
           setStats(data);

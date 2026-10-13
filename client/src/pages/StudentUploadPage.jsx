@@ -15,8 +15,7 @@ import {
 } from 'lucide-react';
 import StudentTable from '../components/StudentTable';
 import AttendanceTable from '../components/AttendanceTable';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_BASE_URL } from '../api';
 
 export default function StudentUploadPage() {
   const navigate = useNavigate();

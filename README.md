@@ -112,6 +112,14 @@ IFHE-KPI-FullStack/
    ```
    - Frontend running at: `http://localhost:5173`
 
+### 4. Shared Team Data (Deployment)
+
+The default SQLite database is local to the backend machine. To share data between teammates, deploy one FastAPI backend and connect it to a persistent PostgreSQL database. Set the backend's `DATABASE_URL` environment variable using the format in `server/.env.example`. Do not commit real credentials.
+
+Deploy the frontend and set `VITE_API_URL` to the public URL of that backend (see `client/.env.example`), then rebuild/redeploy the frontend. All screens use this setting. Every teammate must open the same deployed frontend; their changes will then be saved to the shared database and visible to everyone.
+
+For local development, keep `VITE_API_URL=http://localhost:5000` and omit `DATABASE_URL` to use the local SQLite database. Existing records in local SQLite files must be migrated or imported into the shared PostgreSQL database; deploying the app does not merge local files automatically.
+
 ---
 
 ## Features & API Endpoints
