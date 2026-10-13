@@ -35,9 +35,21 @@ def parse_percentage_value(value: Any) -> Optional[float]:
     return parsed
 
 
-def normalize_student_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], bool]:
+def normalize_academic_year(year: Optional[str]) -> Optional[str]:
+    if not year:
+        return None
+    val = str(year).strip()
+    if val in {"2024-2025", "2024-25", "2024–2025", "2024/2025"}:
+        return "2024-2025"
+    if val in {"2025-2026", "2025-26", "2025–2026", "2025/2026"}:
+        return "2025-2026"
+    return val
+
+
+def normalize_student_rows(raw_rows: List[Dict[str, Any]], academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool]:
     normalized_records = []
     has_invalid_row = False
+    norm_year = normalize_academic_year(academic_year) or "2024-2025"
 
     for row in raw_rows:
         # Match keys case-insensitively / with fallback column names
@@ -88,11 +100,18 @@ def normalize_student_rows(raw_rows: List[Dict[str, Any]]) -> Tuple[List[Dict[st
 
         percentage = round(percentage, 2)
 
+        row_year = (
+            academic_year or 
+            normalize_academic_year(keys_map.get('academic year') or keys_map.get('academicyear') or keys_map.get('academic_year')) or 
+            norm_year
+        )
+
         normalized_records.append({
             "studentId": student_id,
             "studentName": student_name,
             "totalMarks": total_marks,
             "percentage": percentage,
+            "academic_year": row_year,
         })
 
     return normalized_records, has_invalid_row
@@ -115,9 +134,10 @@ def _attendance_subject_value(value: Any) -> Optional[float]:
     return round(parsed, 2)
 
 
-def normalize_attendance_rows(raw_rows: List[Dict[str, Any]], headers: List[str]) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
+def normalize_attendance_rows(raw_rows: List[Dict[str, Any]], headers: List[str], academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
     normalized_records = []
     has_invalid_row = False
+    norm_year = normalize_academic_year(academic_year) or "2024-2025"
     header_keys = {header.lower(): header for header in headers}
     known_metadata = {
         's.no', 's.no.', 's no', 'serial no', 'serial number',
@@ -200,7 +220,7 @@ def normalize_attendance_rows(raw_rows: List[Dict[str, Any]], headers: List[str]
                 'enrollment_number': student_id,
                 'student_name': student_name,
                 'department': 'Computer Science & Engineering',
-                'academic_year': '2024-25',
+                'academic_year': norm_year,
                 'total_classes': len(subject_values) * 100,
                 'attended_classes': int(round(sum(subject_values.values()))),
                 'attendance_percentage': average,
@@ -220,14 +240,15 @@ def normalize_attendance_rows(raw_rows: List[Dict[str, Any]], headers: List[str]
         department = str(department_val).strip() if not pd.isna(department_val) else 'Computer Science & Engineering'
 
         academic_year_val = (
+            academic_year or
             keys_map.get('academic year') or 
             keys_map.get('academicyear') or 
             keys_map.get('academic_year') or 
             keys_map.get('year') or 
             keys_map.get('session') or 
-            '2024-25'
+            norm_year
         )
-        academic_year = str(academic_year_val).strip() if not pd.isna(academic_year_val) else '2024-25'
+        row_year = normalize_academic_year(academic_year_val) or norm_year
 
         total_classes_val = (
             keys_map.get('total classes') or 
@@ -299,7 +320,7 @@ def normalize_attendance_rows(raw_rows: List[Dict[str, Any]], headers: List[str]
             "student_id": student_id,
             "student_name": student_name,
             "department": department,
-            "academic_year": academic_year,
+            "academic_year": row_year,
             "total_classes": total_classes,
             "attended_classes": attended_classes,
             "attendance_percentage": percentage
@@ -308,7 +329,7 @@ def normalize_attendance_rows(raw_rows: List[Dict[str, Any]], headers: List[str]
     return normalized_records, has_invalid_row, subject_headers
 
 
-def parse_attendance_excel_file(file_contents: bytes, filename: str = '') -> Tuple[List[Dict[str, Any]], bool, List[str]]:
+def parse_attendance_excel_file(file_contents: bytes, filename: str = '', academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
     if filename.lower().endswith('.csv'):
         df = pd.read_csv(io.BytesIO(file_contents))
     else:
@@ -319,34 +340,59 @@ def parse_attendance_excel_file(file_contents: bytes, filename: str = '') -> Tup
     headers = [_clean_header(header) for header in df.columns]
     df.columns = headers
     rows = df.to_dict(orient='records')
-    return normalize_attendance_rows(rows, headers)
+    return normalize_attendance_rows(rows, headers, academic_year=academic_year)
 
 
-def save_attendance_records(db: Session, records: List[Dict[str, Any]]) -> int:
-    db.query(models.StudentAttendance).delete(synchronize_session=False)
-    db_records = [
-        models.StudentAttendance(
-            student_id=r['student_id'],
-            enrollment_number=r.get('enrollment_number', r['student_id']),
-            student_name=r['student_name'],
-            department=r['department'],
-            academic_year=r['academic_year'],
-            total_classes=r['total_classes'],
-            attended_classes=r['attended_classes'],
-            attendance_percentage=r['attendance_percentage'],
-            average_attendance=r.get('average_attendance', r['attendance_percentage']),
-            subjects_json=json.dumps(r.get('subjects', [])),
-            subject_values_json=json.dumps(r.get('subject_values', {}))
-        )
-        for r in records
-    ]
-    db.add_all(db_records)
+def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None) -> int:
+    norm_year = normalize_academic_year(academic_year) or (records[0].get('academic_year') if records else "2024-2025")
+    # Preserve records from other academic years!
+    # Update existing attendance records in place or add new ones for this academic year to prevent duplicates:
+    existing_attendance = {
+        str(a.enrollment_number or a.student_id).strip().casefold(): a
+        for a in db.query(models.StudentAttendance).filter(models.StudentAttendance.academic_year == norm_year).all()
+    }
+    for r in records:
+        enrollment = str(r.get('enrollment_number') or r['student_id']).strip().casefold()
+        subjs_json = json.dumps(r.get('subjects', []))
+        subj_vals_json = json.dumps(r.get('subject_values', {}))
+        year = norm_year or r.get('academic_year', '2024-2025')
+        if enrollment in existing_attendance:
+            att = existing_attendance[enrollment]
+            att.student_name = r['student_name']
+            att.department = r.get('department', att.department)
+            att.academic_year = year
+            att.total_classes = r['total_classes']
+            att.attended_classes = r['attended_classes']
+            att.attendance_percentage = r['attendance_percentage']
+            att.average_attendance = r.get('average_attendance', r['attendance_percentage'])
+            att.subjects_json = subjs_json
+            att.subject_values_json = subj_vals_json
+        else:
+            new_att = models.StudentAttendance(
+                student_id=r['student_id'],
+                enrollment_number=r.get('enrollment_number', r['student_id']),
+                student_name=r['student_name'],
+                department=r.get('department', 'Computer Science & Engineering'),
+                academic_year=year,
+                total_classes=r['total_classes'],
+                attended_classes=r['attended_classes'],
+                attendance_percentage=r['attendance_percentage'],
+                average_attendance=r.get('average_attendance', r['attendance_percentage']),
+                subjects_json=subjs_json,
+                subject_values_json=subj_vals_json
+            )
+            db.add(new_att)
+            existing_attendance[enrollment] = new_att
     db.commit()
     return len(records)
 
 
-def match_attendance_students(db: Session, records: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
-    students = db.query(models.StudentUpload).all()
+def match_attendance_students(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
+    norm_year = normalize_academic_year(academic_year)
+    query = db.query(models.StudentUpload)
+    if norm_year:
+        query = query.filter(models.StudentUpload.academic_year == norm_year)
+    students = query.all()
     student_by_enrollment = {
         str(student.studentId).strip().casefold(): student
         for student in students
@@ -372,69 +418,121 @@ def match_attendance_students(db: Session, records: List[Dict[str, Any]]) -> Tup
         record['student_id'] = str(student.studentId).strip()
         record['enrollment_number'] = str(student.studentId).strip()
         record['student_name'] = student.studentName
+        if norm_year:
+            record['academic_year'] = norm_year
         matched_records.append(record)
 
     return matched_records, unmatched
 
 
-def parse_excel_file(file_contents: bytes) -> Tuple[List[Dict[str, Any]], bool]:
+def parse_excel_file(file_contents: bytes, academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool]:
     df = pd.read_excel(io.BytesIO(file_contents))
     # Replace NaN with empty string
     df = df.where(pd.notnull(df), None)
     rows = df.to_dict(orient='records')
-    return normalize_student_rows(rows)
+    return normalize_student_rows(rows, academic_year=academic_year)
 
 
-def save_student_records(db: Session, records: List[Dict[str, Any]]) -> int:
-    db_records = [
-        models.StudentUpload(
-            studentId=r['studentId'],
-            studentName=r['studentName'],
-            totalMarks=r['totalMarks'],
-            percentage=r['percentage']
-        )
-        for r in records
-    ]
-    db.add_all(db_records)
+def save_student_records(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None) -> int:
+    norm_year = normalize_academic_year(academic_year) or (records[0].get('academic_year') if records else "2024-2025")
+    # Avoid creating unintended duplicates or assigning records to the wrong academic year.
+    existing_students = {
+        str(s.studentId).strip().casefold(): s
+        for s in db.query(models.StudentUpload).filter(models.StudentUpload.academic_year == norm_year).all()
+        if s.studentId
+    }
+    saved_count = 0
+    for r in records:
+        sid = str(r['studentId']).strip()
+        key = sid.casefold()
+        year = norm_year or r.get('academic_year') or "2024-2025"
+        if key in existing_students:
+            existing = existing_students[key]
+            existing.studentName = r['studentName']
+            existing.totalMarks = r['totalMarks']
+            existing.percentage = r['percentage']
+            existing.academic_year = year
+        else:
+            new_student = models.StudentUpload(
+                studentId=sid,
+                studentName=r['studentName'],
+                totalMarks=r['totalMarks'],
+                percentage=r['percentage'],
+                academic_year=year
+            )
+            db.add(new_student)
+            existing_students[key] = new_student
+        saved_count += 1
     db.commit()
-    return len(records)
+    return saved_count
 
 
-def get_all_students(db: Session) -> List[models.StudentUpload]:
-    return db.query(models.StudentUpload).order_by(models.StudentUpload.id.desc()).all()
+def get_all_students(db: Session, academic_year: Optional[str] = None) -> List[models.StudentUpload]:
+    query = db.query(models.StudentUpload)
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year:
+        query = query.filter(models.StudentUpload.academic_year == norm_year)
+    return query.order_by(models.StudentUpload.id.desc()).all()
 
 
-def get_student_count(db: Session) -> int:
-    return db.query(models.StudentUpload).count()
+def get_student_count(db: Session, academic_year: Optional[str] = None) -> int:
+    query = db.query(models.StudentUpload)
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year:
+        query = query.filter(models.StudentUpload.academic_year == norm_year)
+    return query.count()
 
 
 def get_total_faculty(db: Session) -> int:
     return db.query(models.Faculty).count()
 
 
-def get_student_faculty_ratio_data(db: Session) -> Dict[str, Any]:
-    total_students = db.query(models.StudentUpload).count()
+def get_student_faculty_ratio_data(db: Session, academic_year: Optional[str] = None) -> Dict[str, Any]:
+    norm_year = normalize_academic_year(academic_year)
+    total_students = get_student_count(db, academic_year=norm_year)
     total_faculty = db.query(models.Faculty).count()
     if total_faculty == 0:
         return {
             "totalStudents": total_students,
             "totalFaculty": 0,
             "ratio": 0.0,
+            "academicYear": norm_year or "2024-2025",
             "message": "Student-Faculty ratio is unavailable because no faculty records exist."
         }
 
     return {
         "totalStudents": total_students,
         "totalFaculty": total_faculty,
-        "ratio": round(total_students / float(total_faculty), 2)
+        "ratio": round(total_students / float(total_faculty), 2),
+        "academicYear": norm_year or "2024-2025"
     }
 
 
 def get_student_faculty_ratio_trend(db: Session) -> Dict[str, Any]:
+    total_faculty = db.query(models.Faculty).count()
+    year_rows = db.query(
+        models.StudentUpload.academic_year,
+        func.count(models.StudentUpload.id)
+    ).group_by(models.StudentUpload.academic_year).all()
+
+    trend_data = []
+    for row in sorted(year_rows, key=lambda x: str(x[0])):
+        year_name = row[0]
+        s_count = row[1]
+        if not year_name:
+            continue
+        ratio = round(s_count / float(total_faculty), 2) if total_faculty > 0 else 0.0
+        trend_data.append({
+            "academicYear": year_name,
+            "totalStudents": s_count,
+            "totalFaculty": total_faculty,
+            "ratio": ratio
+        })
+
     return {
-        "data": [],
+        "data": trend_data,
         "distribution": [],
-        "message": "Trend and ratio-range distribution require academic-year and department fields in the student and faculty source tables."
+        "message": None if trend_data else "No student data available for trend calculation."
     }
 
 
@@ -456,37 +554,51 @@ def get_department_count(db: Session) -> int:
     return len(all_depts) if len(all_depts) > 0 else 0
 
 
-def get_student_faculty_ratio(db: Session) -> float:
-    total_students = get_student_count(db)
+def get_student_faculty_ratio(db: Session, academic_year: Optional[str] = None) -> float:
+    total_students = get_student_count(db, academic_year=academic_year)
     total_faculty = get_total_faculty(db)
     if total_faculty == 0:
         return 0.0
     return round(total_students / float(total_faculty), 2)
 
 
-def get_pass_percentage(db: Session) -> float:
-    total_students = db.query(models.StudentUpload).count()
+def get_pass_percentage(db: Session, academic_year: Optional[str] = None) -> float:
+    query = db.query(models.StudentUpload)
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year:
+        query = query.filter(models.StudentUpload.academic_year == norm_year)
+    total_students = query.count()
     if total_students == 0:
         return 0.0
-    passed = db.query(models.StudentUpload).filter(models.StudentUpload.percentage >= 40.0).count()
+    passed = query.filter(models.StudentUpload.percentage >= 40.0).count()
     return round((passed / float(total_students)) * 100.0, 2)
 
 
-def get_average_student_marks(db: Session) -> float:
-    avg_marks = db.query(func.avg(models.StudentUpload.totalMarks)).scalar()
+def get_average_student_marks(db: Session, academic_year: Optional[str] = None) -> float:
+    query = db.query(func.avg(models.StudentUpload.totalMarks))
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year:
+        query = query.filter(models.StudentUpload.academic_year == norm_year)
+    avg_marks = query.scalar()
     return round(float(avg_marks), 2) if avg_marks is not None else 0.0
 
 
-def get_student_attendance_percentage(db: Session) -> float:
-    records = get_all_attendance(db)
+def get_student_attendance_percentage(db: Session, academic_year: Optional[str] = None) -> float:
+    records = get_all_attendance(db, academic_year=academic_year)
     values = [record.average_attendance for record in records]
     avg_att = sum(values) / len(values) if values else None
     if avg_att is not None:
         return round(float(avg_att), 2)
     
     # Calculate sum of attended vs total classes if attendance_percentage is empty
-    total_cls = db.query(func.sum(models.StudentAttendance.total_classes)).scalar()
-    att_cls = db.query(func.sum(models.StudentAttendance.attended_classes)).scalar()
+    query_total = db.query(func.sum(models.StudentAttendance.total_classes))
+    query_attended = db.query(func.sum(models.StudentAttendance.attended_classes))
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year:
+        query_total = query_total.filter(models.StudentAttendance.academic_year == norm_year)
+        query_attended = query_attended.filter(models.StudentAttendance.academic_year == norm_year)
+    total_cls = query_total.scalar()
+    att_cls = query_attended.scalar()
     if total_cls and total_cls > 0:
         return round((float(att_cls or 0) / float(total_cls)) * 100.0, 2)
     return 0.0
@@ -505,15 +617,16 @@ def get_laboratory_utilization_percentage(db: Session) -> float:
     return round(sum(utilizations) / len(utilizations), 2)
 
 
-def get_kpi_summary(db: Session) -> Dict[str, Any]:
+def get_kpi_summary(db: Session, academic_year: Optional[str] = None) -> Dict[str, Any]:
+    norm_year = normalize_academic_year(academic_year)
     return {
-        "total_students": get_student_count(db),
+        "total_students": get_student_count(db, academic_year=norm_year),
         "total_faculty": get_total_faculty(db),
         "number_of_departments": get_department_count(db),
-        "student_faculty_ratio": get_student_faculty_ratio(db),
-        "pass_percentage": get_pass_percentage(db),
-        "average_student_marks": get_average_student_marks(db),
-        "student_attendance_percentage": get_student_attendance_percentage(db),
+        "student_faculty_ratio": get_student_faculty_ratio(db, academic_year=norm_year),
+        "pass_percentage": get_pass_percentage(db, academic_year=norm_year),
+        "average_student_marks": get_average_student_marks(db, academic_year=norm_year),
+        "student_attendance_percentage": get_student_attendance_percentage(db, academic_year=norm_year),
         "laboratory_utilization_percentage": get_laboratory_utilization_percentage(db)
     }
 
@@ -558,8 +671,12 @@ def create_kpi(db: Session, kpi_data: Dict[str, Any]) -> models.KPI:
 
 
 # Student Attendance CRUD Services
-def get_all_attendance(db: Session) -> List[models.StudentAttendance]:
-    records = db.query(models.StudentAttendance).order_by(models.StudentAttendance.id.asc()).all()
+def get_all_attendance(db: Session, academic_year: Optional[str] = None) -> List[models.StudentAttendance]:
+    query = db.query(models.StudentAttendance)
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year:
+        query = query.filter(models.StudentAttendance.academic_year == norm_year)
+    records = query.order_by(models.StudentAttendance.id.asc()).all()
     default_subjects = [
         "Power Skills - III",
         "Principle of Cryptography",
@@ -592,22 +709,28 @@ def get_all_attendance(db: Session) -> List[models.StudentAttendance]:
     return records
 
 
-def get_attendance_subjects(db: Session) -> List[str]:
-    rows = db.query(models.StudentAttendance.subjects_json).order_by(models.StudentAttendance.id.desc()).first()
+def get_attendance_subjects(db: Session, academic_year: Optional[str] = None) -> List[str]:
+    query = db.query(models.StudentAttendance.subjects_json)
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year:
+        query = query.filter(models.StudentAttendance.academic_year == norm_year)
+    rows = query.order_by(models.StudentAttendance.id.desc()).first()
     if not rows or not rows[0]:
         return []
     return json.loads(rows[0])
 
 
-def get_attendance_kpi(db: Session) -> Dict[str, Any]:
-    records = get_all_attendance(db)
+def get_attendance_kpi(db: Session, academic_year: Optional[str] = None) -> Dict[str, Any]:
+    norm_year = normalize_academic_year(academic_year)
+    records = get_all_attendance(db, academic_year=norm_year)
     values = [record.average_attendance for record in records]
     return {
         'total_students': len(records),
         'overall_average_attendance': round(sum(values) / len(values), 2) if values else 0.0,
         'highest_attendance': max(values) if values else 0.0,
         'lowest_attendance': min(values) if values else 0.0,
-        'subjects': get_attendance_subjects(db),
+        'subjects': get_attendance_subjects(db, academic_year=norm_year),
+        'academic_year': norm_year,
     }
 
 
@@ -705,18 +828,18 @@ def seed_initial_data(db: Session) -> None:
     # Seed Student Attendance
     if db.query(models.StudentAttendance).count() == 0:
         attendance_records = [
-            models.StudentAttendance(student_id="STU101", student_name="Aarav Sharma", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=92, attendance_percentage=92.0),
-            models.StudentAttendance(student_id="STU102", student_name="Ananya Rao", department="Electronics & Communication Engineering", academic_year="2024-25", total_classes=100, attended_classes=88, attendance_percentage=88.0),
-            models.StudentAttendance(student_id="STU103", student_name="Rohan Verma", department="Mechanical Engineering", academic_year="2024-25", total_classes=100, attended_classes=72, attendance_percentage=72.0),
-            models.StudentAttendance(student_id="STU104", student_name="Priya Patel", department="Biotechnology", academic_year="2024-25", total_classes=100, attended_classes=85, attendance_percentage=85.0),
-            models.StudentAttendance(student_id="STU105", student_name="Vikram Singh", department="Civil Engineering", academic_year="2024-25", total_classes=100, attended_classes=64, attendance_percentage=64.0),
-            models.StudentAttendance(student_id="STU106", student_name="Sneha Reddy", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=96, attendance_percentage=96.0),
-            models.StudentAttendance(student_id="STU107", student_name="Rahul Nair", department="Electrical & Electronics Engineering", academic_year="2024-25", total_classes=100, attended_classes=78, attendance_percentage=78.0),
-            models.StudentAttendance(student_id="STU108", student_name="Kavya Iyer", department="Electronics & Communication Engineering", academic_year="2024-25", total_classes=100, attended_classes=82, attendance_percentage=82.0),
-            models.StudentAttendance(student_id="STU109", student_name="Aditya Joshi", department="Mechanical Engineering", academic_year="2024-25", total_classes=100, attended_classes=58, attendance_percentage=58.0),
-            models.StudentAttendance(student_id="STU110", student_name="Meera Sen", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=89, attendance_percentage=89.0),
-            models.StudentAttendance(student_id="STU111", student_name="Divya Menon", department="Biotechnology", academic_year="2024-25", total_classes=100, attended_classes=76, attendance_percentage=76.0),
-            models.StudentAttendance(student_id="STU112", student_name="Karthik Raju", department="Computer Science & Engineering", academic_year="2024-25", total_classes=100, attended_classes=69, attendance_percentage=69.0),
+            models.StudentAttendance(student_id="STU101", student_name="Aarav Sharma", department="Computer Science & Engineering", academic_year="2024-2025", total_classes=100, attended_classes=92, attendance_percentage=92.0),
+            models.StudentAttendance(student_id="STU102", student_name="Ananya Rao", department="Electronics & Communication Engineering", academic_year="2024-2025", total_classes=100, attended_classes=88, attendance_percentage=88.0),
+            models.StudentAttendance(student_id="STU103", student_name="Rohan Verma", department="Mechanical Engineering", academic_year="2024-2025", total_classes=100, attended_classes=72, attendance_percentage=72.0),
+            models.StudentAttendance(student_id="STU104", student_name="Priya Patel", department="Biotechnology", academic_year="2024-2025", total_classes=100, attended_classes=85, attendance_percentage=85.0),
+            models.StudentAttendance(student_id="STU105", student_name="Vikram Singh", department="Civil Engineering", academic_year="2024-2025", total_classes=100, attended_classes=64, attendance_percentage=64.0),
+            models.StudentAttendance(student_id="STU106", student_name="Sneha Reddy", department="Computer Science & Engineering", academic_year="2024-2025", total_classes=100, attended_classes=96, attendance_percentage=96.0),
+            models.StudentAttendance(student_id="STU107", student_name="Rahul Nair", department="Electrical & Electronics Engineering", academic_year="2024-2025", total_classes=100, attended_classes=78, attendance_percentage=78.0),
+            models.StudentAttendance(student_id="STU108", student_name="Kavya Iyer", department="Electronics & Communication Engineering", academic_year="2024-2025", total_classes=100, attended_classes=82, attendance_percentage=82.0),
+            models.StudentAttendance(student_id="STU109", student_name="Aditya Joshi", department="Mechanical Engineering", academic_year="2024-2025", total_classes=100, attended_classes=58, attendance_percentage=58.0),
+            models.StudentAttendance(student_id="STU110", student_name="Meera Sen", department="Computer Science & Engineering", academic_year="2024-2025", total_classes=100, attended_classes=89, attendance_percentage=89.0),
+            models.StudentAttendance(student_id="STU111", student_name="Divya Menon", department="Biotechnology", academic_year="2024-2025", total_classes=100, attended_classes=76, attendance_percentage=76.0),
+            models.StudentAttendance(student_id="STU112", student_name="Karthik Raju", department="Computer Science & Engineering", academic_year="2024-2025", total_classes=100, attended_classes=69, attendance_percentage=69.0),
         ]
         db.add_all(attendance_records)
         db.commit()
@@ -740,11 +863,11 @@ def seed_initial_data(db: Session) -> None:
     # Seed Sample Students if student_uploads is empty
     if db.query(models.StudentUpload).count() == 0:
         students = [
-            models.StudentUpload(studentId="STU101", studentName="Aarav Sharma", totalMarks=510, percentage=85.0),
-            models.StudentUpload(studentId="STU102", studentName="Ananya Rao", totalMarks=540, percentage=90.0),
-            models.StudentUpload(studentId="STU103", studentName="Rohan Verma", totalMarks=432, percentage=72.0),
-            models.StudentUpload(studentId="STU104", studentName="Priya Patel", totalMarks=468, percentage=78.0),
-            models.StudentUpload(studentId="STU105", studentName="Vikram Singh", totalMarks=492, percentage=82.0)
+            models.StudentUpload(studentId="STU101", studentName="Aarav Sharma", totalMarks=510, percentage=85.0, academic_year="2024-2025"),
+            models.StudentUpload(studentId="STU102", studentName="Ananya Rao", totalMarks=540, percentage=90.0, academic_year="2024-2025"),
+            models.StudentUpload(studentId="STU103", studentName="Rohan Verma", totalMarks=432, percentage=72.0, academic_year="2024-2025"),
+            models.StudentUpload(studentId="STU104", studentName="Priya Patel", totalMarks=468, percentage=78.0, academic_year="2024-2025"),
+            models.StudentUpload(studentId="STU105", studentName="Vikram Singh", totalMarks=492, percentage=82.0, academic_year="2024-2025")
         ]
         db.add_all(students)
         db.commit()

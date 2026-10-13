@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import FastAPI, Depends, File, UploadFile, HTTPException, status
+from typing import List, Optional
+from fastapi import FastAPI, Depends, File, UploadFile, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy.orm import Session
@@ -8,6 +8,8 @@ import database
 import models
 import schemas
 import services
+
+VALID_ACADEMIC_YEARS = {"2024-2025", "2025-2026"}
 
 # Create database tables automatically and apply any missing column migrations
 database.init_db()
@@ -34,9 +36,10 @@ def root():
 
 
 @app.get("/api/stats", response_model=schemas.StatsResponse)
-def get_stats(db: Session = Depends(database.get_db)):
+def get_stats(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
     try:
-        db_student_count = services.get_student_count(db)
+        norm_year = services.normalize_academic_year(academic_year)
+        db_student_count = services.get_student_count(db, academic_year=norm_year)
         db_faculty_count = services.get_total_faculty(db)
         db_dept_count = services.get_department_count(db)
         kpi_count = len(services.get_all_kpis(db))
@@ -56,10 +59,11 @@ def get_stats(db: Session = Depends(database.get_db)):
 
 
 @app.get("/api/kpis/summary", response_model=schemas.KPISummaryResponse)
-def get_kpi_summary(db: Session = Depends(database.get_db)):
+def get_kpi_summary(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
     """Fetch all calculated KPI values for the dashboard."""
     try:
-        summary = services.get_kpi_summary(db)
+        norm_year = services.normalize_academic_year(academic_year)
+        summary = services.get_kpi_summary(db, academic_year=norm_year)
         return summary
     except Exception as e:
         raise HTTPException(
@@ -69,9 +73,10 @@ def get_kpi_summary(db: Session = Depends(database.get_db)):
 
 
 @app.get("/api/kpis/student-faculty-ratio", response_model=schemas.StudentFacultyRatioResponse)
-def get_student_faculty_ratio(db: Session = Depends(database.get_db)):
+def get_student_faculty_ratio(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
     try:
-        return services.get_student_faculty_ratio_data(db)
+        norm_year = services.normalize_academic_year(academic_year)
+        return services.get_student_faculty_ratio_data(db, academic_year=norm_year)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -161,9 +166,10 @@ def create_department(dept: schemas.DepartmentCreate, db: Session = Depends(data
 
 # Student Attendance Endpoints
 @app.get("/api/attendance", response_model=List[schemas.StudentAttendanceSchema])
-def get_attendance(db: Session = Depends(database.get_db)):
+def get_attendance(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
     try:
-        return services.get_all_attendance(db)
+        norm_year = services.normalize_academic_year(academic_year)
+        return services.get_all_attendance(db, academic_year=norm_year)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -172,17 +178,19 @@ def get_attendance(db: Session = Depends(database.get_db)):
 
 
 @app.get("/api/attendance/subjects", response_model=List[str])
-def get_attendance_subjects(db: Session = Depends(database.get_db)):
+def get_attendance_subjects(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
     try:
-        return services.get_attendance_subjects(db)
+        norm_year = services.normalize_academic_year(academic_year)
+        return services.get_attendance_subjects(db, academic_year=norm_year)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve attendance subjects: {str(e)}")
 
 
 @app.get("/api/attendance/kpi")
-def get_attendance_kpi(db: Session = Depends(database.get_db)):
+def get_attendance_kpi(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
     try:
-        return services.get_attendance_kpi(db)
+        norm_year = services.normalize_academic_year(academic_year)
+        return services.get_attendance_kpi(db, academic_year=norm_year)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve attendance KPI: {str(e)}")
 
@@ -224,8 +232,24 @@ def create_lab_utilization(lab: schemas.LaboratoryUtilizationCreate, db: Session
 @app.post("/api/upload-students", response_model=schemas.UploadResponse)
 async def upload_students(
     file: UploadFile = File(...),
+    academic_year: Optional[str] = Form(None),
+    academicYear: Optional[str] = Form(None),
     db: Session = Depends(database.get_db)
 ):
+    selected_year = (academic_year or academicYear or "").strip()
+    if not selected_year:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Academic Year is required. Please select an academic year."}
+        )
+
+    norm_year = services.normalize_academic_year(selected_year)
+    if norm_year not in VALID_ACADEMIC_YEARS:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Invalid Academic Year. Must be either '2024-2025' or '2025-2026'."}
+        )
+
     if not file or not file.filename:
         return JSONResponse(
             status_code=400,
@@ -240,7 +264,7 @@ async def upload_students(
                 content={"message": "Uploaded file is empty."}
             )
 
-        records, has_invalid_row = services.parse_excel_file(contents)
+        records, has_invalid_row = services.parse_excel_file(contents, academic_year=norm_year)
 
         if not records:
             return JSONResponse(
@@ -254,11 +278,13 @@ async def upload_students(
                 content={"message": "One or more rows are missing Student ID or Student Name."}
             )
 
-        saved_count = services.save_student_records(db, records)
+        saved_count = services.save_student_records(db, records, academic_year=norm_year)
 
         return {
-            "message": "Student records uploaded successfully.",
-            "count": saved_count
+            "message": f"Student records uploaded successfully for academic year {norm_year}.",
+            "count": saved_count,
+            "academic_year": norm_year,
+            "academicYear": norm_year
         }
     except Exception as e:
         return JSONResponse(
@@ -273,8 +299,24 @@ async def upload_students(
 @app.post("/api/upload-attendance", response_model=schemas.UploadResponse)
 async def upload_attendance(
     file: UploadFile = File(...),
+    academic_year: Optional[str] = Form(None),
+    academicYear: Optional[str] = Form(None),
     db: Session = Depends(database.get_db)
 ):
+    selected_year = (academic_year or academicYear or "").strip()
+    if not selected_year:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Academic Year is required. Please select an academic year."}
+        )
+
+    norm_year = services.normalize_academic_year(selected_year)
+    if norm_year not in VALID_ACADEMIC_YEARS:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Invalid Academic Year. Must be either '2024-2025' or '2025-2026'."}
+        )
+
     if not file or not file.filename:
         return JSONResponse(
             status_code=400,
@@ -289,7 +331,9 @@ async def upload_attendance(
                 content={"message": "Uploaded file is empty."}
             )
 
-        records, has_invalid_row, subject_names = services.parse_attendance_excel_file(contents, file.filename)
+        records, has_invalid_row, subject_names = services.parse_attendance_excel_file(
+            contents, file.filename, academic_year=norm_year
+        )
 
         if not records:
             return JSONResponse(
@@ -303,25 +347,27 @@ async def upload_attendance(
                 content={"message": "One or more rows are missing an enrollment number."}
             )
 
-        records, unmatched_enrollments = services.match_attendance_students(db, records)
+        records, unmatched_enrollments = services.match_attendance_students(db, records, academic_year=norm_year)
         if unmatched_enrollments:
             return JSONResponse(
                 status_code=400,
                 content={
-                    "message": "Attendance rows could not be matched to existing students by enrollment number.",
+                    "message": f"Attendance rows could not be matched to existing students for academic year {norm_year}.",
                     "unmatched_enrollments": unmatched_enrollments
                 }
             )
 
-        saved_count = services.save_attendance_records(db, records)
+        saved_count = services.save_attendance_records(db, records, academic_year=norm_year)
 
         return {
-            "message": "Student attendance uploaded successfully.",
+            "message": f"Student attendance uploaded successfully for academic year {norm_year}.",
             "count": saved_count,
             "students": saved_count,
             "subjects": len(subject_names),
             "subject_names": subject_names,
-            "average_attendance": services.get_attendance_kpi(db)['overall_average_attendance']
+            "average_attendance": services.get_attendance_kpi(db, academic_year=norm_year)['overall_average_attendance'],
+            "academic_year": norm_year,
+            "academicYear": norm_year
         }
     except Exception as e:
         return JSONResponse(
@@ -334,9 +380,10 @@ async def upload_attendance(
 
 
 @app.get("/api/students", response_model=List[schemas.StudentUploadSchema])
-def get_students(db: Session = Depends(database.get_db)):
+def get_students(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
     try:
-        students = services.get_all_students(db)
+        norm_year = services.normalize_academic_year(academic_year)
+        students = services.get_all_students(db, academic_year=norm_year)
         return students
     except Exception as e:
         raise HTTPException(

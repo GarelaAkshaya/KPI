@@ -26,6 +26,8 @@ export default function StudentUploadPage() {
 
   // Student Marks Upload State
   const [selectedMarksFile, setSelectedMarksFile] = useState(null);
+  const [marksAcademicYear, setMarksAcademicYear] = useState('');
+  const [marksFilterYear, setMarksFilterYear] = useState('All');
   const [isUploadingMarks, setIsUploadingMarks] = useState(false);
   const [marksMessage, setMarksMessage] = useState('');
   const [marksStatus, setMarksStatus] = useState('idle');
@@ -37,6 +39,8 @@ export default function StudentUploadPage() {
 
   // Student Attendance Upload State
   const [selectedAttendanceFile, setSelectedAttendanceFile] = useState(null);
+  const [attendanceAcademicYear, setAttendanceAcademicYear] = useState('');
+  const [attendanceFilterYear, setAttendanceFilterYear] = useState('All');
   const [isUploadingAttendance, setIsUploadingAttendance] = useState(false);
   const [attendanceMessage, setAttendanceMessage] = useState('');
   const [attendanceStatus, setAttendanceStatus] = useState('idle');
@@ -58,12 +62,19 @@ export default function StudentUploadPage() {
       return;
     }
 
+    if (!marksAcademicYear) {
+      setMarksStatus('error');
+      setMarksMessage('Academic Year is required. Please explicitly select an Academic Year before uploading.');
+      return;
+    }
+
     setIsUploadingMarks(true);
     setMarksStatus('idle');
     setMarksMessage('');
 
     const formData = new FormData();
     formData.append('file', selectedMarksFile);
+    formData.append('academic_year', marksAcademicYear);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/upload-students`, {
@@ -81,6 +92,7 @@ export default function StudentUploadPage() {
       setMarksMessage(data.message || `Uploaded ${data.count} student marks records successfully.`);
       await fetchStudents();
       setSelectedMarksFile(null);
+      setMarksAcademicYear('');
       event.target.reset();
     } catch (error) {
       setMarksStatus('error');
@@ -100,12 +112,19 @@ export default function StudentUploadPage() {
       return;
     }
 
+    if (!attendanceAcademicYear) {
+      setAttendanceStatus('error');
+      setAttendanceMessage('Academic Year is required. Please explicitly select an Academic Year before uploading.');
+      return;
+    }
+
     setIsUploadingAttendance(true);
     setAttendanceStatus('idle');
     setAttendanceMessage('');
 
     const formData = new FormData();
     formData.append('file', selectedAttendanceFile);
+    formData.append('academic_year', attendanceAcademicYear);
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/upload-attendance`, {
@@ -128,6 +147,7 @@ export default function StudentUploadPage() {
       setAttendanceSubjects(data.subject_names || []);
       await fetchAttendance();
       setSelectedAttendanceFile(null);
+      setAttendanceAcademicYear('');
       event.target.reset();
     } catch (error) {
       setAttendanceStatus('error');
@@ -178,8 +198,10 @@ export default function StudentUploadPage() {
   function processStudentRecords(records) {
     const map = new Map();
     for (const r of records) {
-      const key = String(r.studentId ?? '').trim();
-      if (!key) continue;
+      const sid = String(r.studentId ?? '').trim();
+      const year = r.academic_year || r.academicYear || '2024-2025';
+      if (!sid) continue;
+      const key = `${sid}_${year}`;
       if (!map.has(key)) {
         map.set(key, r);
       } else {
@@ -206,6 +228,17 @@ export default function StudentUploadPage() {
 
     return deduped;
   }
+
+  // Filtered views for tables
+  const filteredStudents = React.useMemo(() => {
+    if (marksFilterYear === 'All') return students;
+    return students.filter((s) => (s.academic_year || s.academicYear) === marksFilterYear);
+  }, [students, marksFilterYear]);
+
+  const filteredAttendance = React.useMemo(() => {
+    if (attendanceFilterYear === 'All') return attendanceList;
+    return attendanceList.filter((a) => (a.academic_year || a.academicYear) === attendanceFilterYear);
+  }, [attendanceList, attendanceFilterYear]);
 
   const toggleMarksTable = async () => {
     const willShow = !showMarksTable;
@@ -284,6 +317,31 @@ export default function StudentUploadPage() {
             </div>
 
             <form onSubmit={handleMarksSubmit} className="space-y-5">
+              {/* Academic Year Selection */}
+              <div className="space-y-2">
+                <label htmlFor="marks-academic-year" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                  Academic Year <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    id="marks-academic-year"
+                    required
+                    value={marksAcademicYear}
+                    onChange={(event) => setMarksAcademicYear(event.target.value)}
+                    className="w-full appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 pr-10 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#2563EB]/40 focus:border-[#2563EB] focus:bg-[#FFFFFF] transition cursor-pointer"
+                  >
+                    <option value="" disabled>Select Academic Year</option>
+                    <option value="2024-2025">2024-2025</option>
+                    <option value="2025-2026">2025-2026</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-[#64748B]">
+                    <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
+                      <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
               <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-6 py-10 text-center transition hover:border-[#2563EB] hover:bg-[#EFF6FF]">
                 <UploadCloud className="mb-4 h-10 w-10 text-[#2563EB]" />
                 <span className="text-lg font-semibold text-[#1E293B]">Choose Marks Excel File</span>
@@ -321,12 +379,28 @@ export default function StudentUploadPage() {
               </div>
             )}
 
-            {/* Student Marks count and view button */}
+            {/* Student Marks count, filter and view button */}
             <div className="mt-6 pt-6 border-t border-[#E2E8F0]">
-              <div className="flex items-center justify-between gap-4">
-                <div className="rounded-lg bg-[#EFF6FF] border border-[#DBEAFE] px-4 py-3 text-sm text-[#1E293B]">
-                  <span className="text-[#64748B]">Total Uploaded Students: </span>
-                  <span className="font-semibold">{totalStudents !== null ? totalStudents : (loadingStudents ? 'Loading...' : '0')}</span>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="rounded-lg bg-[#EFF6FF] border border-[#DBEAFE] px-4 py-2.5 text-sm text-[#1E293B]">
+                    <span className="text-[#64748B]">Showing Students: </span>
+                    <span className="font-semibold text-[#2563EB]">{filteredStudents.length}</span>
+                    <span className="text-xs text-[#64748B] ml-2">({marksFilterYear === 'All' ? 'All Years' : marksFilterYear})</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs">
+                    <span className="text-[#64748B] font-semibold">Filter Year:</span>
+                    <select
+                      value={marksFilterYear}
+                      onChange={(e) => setMarksFilterYear(e.target.value)}
+                      className="bg-transparent font-bold text-[#1E293B] focus:outline-none cursor-pointer"
+                    >
+                      <option value="All">All Years</option>
+                      <option value="2024-2025">2024-2025</option>
+                      <option value="2025-2026">2025-2026</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>
@@ -354,10 +428,12 @@ export default function StudentUploadPage() {
                     </div>
                   ) : (
                     <>
-                      {students.length === 0 ? (
-                        <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-6 text-sm text-[#64748B]">No student records found.</div>
+                      {filteredStudents.length === 0 ? (
+                        <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-6 text-sm text-[#64748B]">
+                          No student records found for {marksFilterYear === 'All' ? 'any academic year' : marksFilterYear}.
+                        </div>
                       ) : (
-                        <StudentTable students={students} />
+                        <StudentTable students={filteredStudents} />
                       )}
                     </>
                   )}
@@ -421,6 +497,31 @@ export default function StudentUploadPage() {
               </div>
 
               <form onSubmit={handleAttendanceSubmit} className="space-y-5">
+                {/* Academic Year Selection */}
+                <div className="space-y-2">
+                  <label htmlFor="attendance-academic-year" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                    Academic Year <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="attendance-academic-year"
+                      required
+                      value={attendanceAcademicYear}
+                      onChange={(event) => setAttendanceAcademicYear(event.target.value)}
+                      className="w-full appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 pr-10 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 focus:border-[#16A34A] focus:bg-[#FFFFFF] transition cursor-pointer"
+                    >
+                      <option value="" disabled>Select Academic Year</option>
+                      <option value="2024-2025">2024-2025</option>
+                      <option value="2025-2026">2025-2026</option>
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-[#64748B]">
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
+                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
                 <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-6 py-10 text-center transition hover:border-[#16A34A] hover:bg-[#F0FDF4]">
                   <UploadCloud className="mb-4 h-10 w-10 text-[#16A34A]" />
                   <span className="text-lg font-semibold text-[#1E293B]">Choose Attendance Excel File</span>
@@ -458,14 +559,28 @@ export default function StudentUploadPage() {
                 </div>
               )}
 
-              {/* Attendance count and view button */}
+              {/* Attendance count, filter and view button */}
               <div className="mt-6 pt-6 border-t border-[#E2E8F0]">
-                <div className="flex items-center justify-between gap-4">
-                    <div className="rounded-lg bg-[#F0FDF4] border border-[#DCFCE7] px-4 py-3 text-sm text-[#1E293B]">
-                    <span className="text-[#64748B]">Students: </span>
-                    <span className="font-semibold text-[#16A34A]">{attendanceUploadSummary?.students ?? totalAttendance ?? (loadingAttendance ? 'Loading...' : '0')}</span>
-                    <span className="ml-4 text-[#64748B]">Subjects: </span>
-                    <span className="font-semibold text-[#16A34A]">{attendanceUploadSummary?.subjects ?? attendanceSubjects.length}</span>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="rounded-lg bg-[#F0FDF4] border border-[#DCFCE7] px-4 py-2.5 text-sm text-[#1E293B]">
+                      <span className="text-[#64748B]">Showing Records: </span>
+                      <span className="font-semibold text-[#16A34A]">{filteredAttendance.length}</span>
+                      <span className="text-xs text-[#64748B] ml-2">({attendanceFilterYear === 'All' ? 'All Years' : attendanceFilterYear})</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs">
+                      <span className="text-[#64748B] font-semibold">Filter Year:</span>
+                      <select
+                        value={attendanceFilterYear}
+                        onChange={(e) => setAttendanceFilterYear(e.target.value)}
+                        className="bg-transparent font-bold text-[#1E293B] focus:outline-none cursor-pointer"
+                      >
+                        <option value="All">All Years</option>
+                        <option value="2024-2025">2024-2025</option>
+                        <option value="2025-2026">2025-2026</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -473,7 +588,7 @@ export default function StudentUploadPage() {
                       onClick={toggleAttendanceTable}
                       className="rounded-2xl bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#15803D]"
                     >
-                      {loadingAttendance ? 'Loading...' : (showAttendanceTable ? 'Hide Students' : 'View Students')}
+                      {loadingAttendance ? 'Loading...' : (showAttendanceTable ? 'Hide Records' : 'View Records')}
                     </button>
                   </div>
                 </div>
@@ -493,10 +608,12 @@ export default function StudentUploadPage() {
                       </div>
                     ) : (
                       <>
-                        {attendanceList.length === 0 ? (
-                          <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-6 text-sm text-[#64748B]">No attendance records found.</div>
+                        {filteredAttendance.length === 0 ? (
+                          <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-6 text-sm text-[#64748B]">
+                            No attendance records found for {attendanceFilterYear === 'All' ? 'any academic year' : attendanceFilterYear}.
+                          </div>
                         ) : (
-                          <AttendanceTable attendance={attendanceList} />
+                          <AttendanceTable attendance={filteredAttendance} />
                         )}
                       </>
                     )}

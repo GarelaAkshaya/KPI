@@ -7,7 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function KPIDashboardPage() {
   const [selectedKPI, setSelectedKPI] = useState('Student Attendance');
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-25');
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
   const [ratioData, setRatioData] = useState(null);
   const [ratioTrend, setRatioTrend] = useState([]);
   const [ratioDistribution, setRatioDistribution] = useState([]);
@@ -25,7 +25,7 @@ export default function KPIDashboardPage() {
     setRatioError('');
 
     Promise.all([
-      fetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio`, { signal: controller.signal }),
+      fetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio?academic_year=${encodeURIComponent(selectedAcademicYear)}`, { signal: controller.signal }),
       fetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio/trend`, { signal: controller.signal }),
     ])
       .then(async ([ratioResponse, trendResponse]) => {
@@ -47,7 +47,7 @@ export default function KPIDashboardPage() {
       });
 
     return () => controller.abort();
-  }, [selectedKPI]);
+  }, [selectedKPI, selectedAcademicYear]);
 
   const exportRatioReport = () => {
     if (!ratioData) return;
@@ -73,10 +73,8 @@ export default function KPIDashboardPage() {
   ];
 
   const yearOptions = [
-    '2022-23',
-    '2023-24',
-    '2024-25',
-    '2025-26',
+    '2024-2025',
+    '2025-2026',
   ];
 
   const laboratoryUtilizationData = [

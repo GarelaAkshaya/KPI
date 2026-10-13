@@ -12,7 +12,12 @@ class StudentUpload(Base):
     studentName = Column(String, nullable=False)
     totalMarks = Column(Integer, nullable=False)
     percentage = Column(Float, nullable=False)
+    academic_year = Column(String, nullable=False, default="2024-2025", index=True)
     createdAt = Column(String, nullable=False, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+    @property
+    def academicYear(self):
+        return self.academic_year
 
 
 class LaboratoryUtilization(Base):
@@ -89,4 +94,8 @@ class StudentAttendance(Base):
     def subject_values(self):
         ignored = {'s.no', 's.no.', 's no', 'serial no', 'serial number'}
         return {key: value for key, value in json.loads(self.subject_values_json or '{}').items() if key.lower() not in ignored}
+
+    @property
+    def academicYear(self):
+        return self.academic_year
 

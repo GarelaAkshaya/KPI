@@ -8,6 +8,8 @@ class StudentUploadSchema(BaseModel):
     studentName: str
     totalMarks: int
     percentage: float
+    academic_year: Optional[str] = "2024-2025"
+    academicYear: Optional[str] = "2024-2025"
     createdAt: str
 
     class Config:
@@ -26,6 +28,8 @@ class StudentFacultyRatioResponse(BaseModel):
     totalStudents: int
     totalFaculty: int
     ratio: float
+    academicYear: Optional[str] = None
+    academic_year: Optional[str] = None
     message: Optional[str] = None
 
 
@@ -42,6 +46,8 @@ class UploadResponse(BaseModel):
     subjects: Optional[int] = None
     subject_names: Optional[list[str]] = None
     average_attendance: Optional[float] = None
+    academic_year: Optional[str] = None
+    academicYear: Optional[str] = None
 
 
 # Faculty Schemas
@@ -115,6 +121,7 @@ class StudentAttendanceBase(BaseModel):
     student_name: str
     department: str
     academic_year: str
+    academicYear: Optional[str] = None
     total_classes: int
     attended_classes: int
     attendance_percentage: Optional[float] = None

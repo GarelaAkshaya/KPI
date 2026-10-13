@@ -52,7 +52,7 @@ const getSubjectLabel = (subject) => {
 
 const isNonSubjectColumn = (subject) => /^s\.?\s*no\.?$/i.test(String(subject).trim());
 
-export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
+export default function StudentAttendanceKPI({ academicYear = '2024-2025' }) {
   const [attendanceData, setAttendanceData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDept, setSelectedDept] = useState('All');
@@ -62,12 +62,13 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
   const [hoveredCompare, setHoveredCompare] = useState(null);
   const [showTable, setShowTable] = useState(false);
 
-  // Fetch live attendance data
+  // Fetch live attendance data for the selected academic year
   useEffect(() => {
     async function fetchAttendance() {
       setIsLoading(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/attendance`);
+        const queryParam = academicYear ? `?academic_year=${encodeURIComponent(academicYear)}` : '';
+        const res = await fetch(`${API_BASE_URL}/api/attendance${queryParam}`);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data)) {
@@ -81,15 +82,21 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
       }
     }
     fetchAttendance();
-  }, []);
+  }, [academicYear]);
 
-  // Filter list by selected department
+  // Filter list by selected department and academic year
   const filteredData = useMemo(() => {
     return attendanceData.filter((item) => {
+      const itemYear = item.academic_year || item.academicYear;
+      if (academicYear && itemYear) {
+        const normItemYear = itemYear === '2024-25' ? '2024-2025' : itemYear === '2025-26' ? '2025-2026' : itemYear;
+        const normPropYear = academicYear === '2024-25' ? '2024-2025' : academicYear === '2025-26' ? '2025-2026' : academicYear;
+        if (normItemYear !== normPropYear) return false;
+      }
       if (selectedDept !== 'All' && item.department !== selectedDept) return false;
       return true;
     });
-  }, [attendanceData, selectedDept]);
+  }, [attendanceData, selectedDept, academicYear]);
 
   const DEFAULT_SUBJECTS = useMemo(() => [
     'Power Skills - III',
@@ -322,6 +329,18 @@ export default function StudentAttendanceKPI({ academicYear = '2024-25' }) {
               </button>
             </div>
           </div>
+
+          {filteredData.length === 0 && !isLoading && (
+            <div className="mt-6 rounded-2xl border border-blue-200 bg-white p-6 sm:p-8 text-center shadow-xs">
+              <div className="mx-auto w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">No Attendance Records for Academic Year {academicYear}</h3>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                There are currently no student attendance records in the database for the {academicYear} academic session. Upload an attendance sheet for {academicYear} to view live KPI analytics.
+              </p>
+            </div>
+          )}
 
           {/* Top Hero Overall Metric + 4 Key KPI Cards */}
           <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
