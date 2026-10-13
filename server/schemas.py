@@ -8,6 +8,17 @@ class StudentUploadSchema(BaseModel):
     studentName: str
     totalMarks: int
     percentage: float
+    enrollment_number: Optional[str] = None
+    enrollmentNumber: Optional[str] = None
+    department: Optional[str] = "Artificial Intelligence and Data Science (AIDS)"
+    academic_year: Optional[str] = "2024-2025"
+    academicYear: Optional[str] = "2024-2025"
+    dm: Optional[int] = None
+    dsc: Optional[int] = None
+    coa: Optional[int] = None
+    python_marks: Optional[int] = None
+    ml: Optional[int] = None
+    subject_marks: Optional[dict[str, Optional[int]]] = None
     createdAt: str
 
     class Config:
@@ -26,6 +37,8 @@ class StudentFacultyRatioResponse(BaseModel):
     totalStudents: int
     totalFaculty: int
     ratio: float
+    academicYear: Optional[str] = None
+    academic_year: Optional[str] = None
     message: Optional[str] = None
 
 
@@ -42,6 +55,8 @@ class UploadResponse(BaseModel):
     subjects: Optional[int] = None
     subject_names: Optional[list[str]] = None
     average_attendance: Optional[float] = None
+    academic_year: Optional[str] = None
+    academicYear: Optional[str] = None
 
 
 # Faculty Schemas
@@ -115,6 +130,7 @@ class StudentAttendanceBase(BaseModel):
     student_name: str
     department: str
     academic_year: str
+    academicYear: Optional[str] = None
     total_classes: int
     attended_classes: int
     attendance_percentage: Optional[float] = None
@@ -170,4 +186,36 @@ class KPISummaryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Pass Percentage KPI Schemas
+class SubjectPassFail(BaseModel):
+    subject: str
+    subject_name: str
+    passed: int
+    failed: int
+    total: int
+    pass_percentage: float
+    fail_percentage: float
+
+
+class OverallPassFail(BaseModel):
+    passed: int
+    failed: int
+    total: int
+    pass_percentage: float
+    fail_percentage: float
+
+
+class PassPercentageKPIResponse(BaseModel):
+    academic_year: str
+    academicYear: str
+    total_students_evaluated: int
+    total_students_count: int
+    uncalculated_count: int
+    overall: OverallPassFail
+    subjects: list[SubjectPassFail]
+    overall_pass_percentage: float
+    overall_fail_percentage: float
+    message: Optional[str] = None
 

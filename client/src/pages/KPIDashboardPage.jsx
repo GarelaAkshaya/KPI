@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Navbar from '../components/Navbar';
 import StudentAttendanceKPI from '../components/StudentAttendanceKPI';
+import PassPercentageKPI from '../components/PassPercentageKPI';
 import { BarChart3, Calendar, Filter, AreaChart, PieChart, Layers, ArrowUpRight, Info, Users, UserRound, Database, FileText, Settings, Bell, Home, Upload, SlidersHorizontal } from 'lucide-react';
 import { API_BASE_URL } from '../api';
 
 export default function KPIDashboardPage() {
   const [selectedKPI, setSelectedKPI] = useState('Student Attendance');
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-25');
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
   const [ratioData, setRatioData] = useState(null);
   const [ratioTrend, setRatioTrend] = useState([]);
   const [ratioDistribution, setRatioDistribution] = useState([]);
@@ -24,7 +25,7 @@ export default function KPIDashboardPage() {
     setRatioError('');
 
     Promise.all([
-      fetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio`, { signal: controller.signal }),
+      fetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio?academic_year=${encodeURIComponent(selectedAcademicYear)}`, { signal: controller.signal }),
       fetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio/trend`, { signal: controller.signal }),
     ])
       .then(async ([ratioResponse, trendResponse]) => {
@@ -46,7 +47,7 @@ export default function KPIDashboardPage() {
       });
 
     return () => controller.abort();
-  }, [selectedKPI]);
+  }, [selectedKPI, selectedAcademicYear]);
 
   const exportRatioReport = () => {
     if (!ratioData) return;
@@ -72,10 +73,8 @@ export default function KPIDashboardPage() {
   ];
 
   const yearOptions = [
-    '2022-23',
-    '2023-24',
-    '2024-25',
-    '2025-26',
+    '2024-2025',
+    '2025-2026',
   ];
 
   const laboratoryUtilizationData = [
@@ -261,7 +260,15 @@ export default function KPIDashboardPage() {
         {/* Main KPI Content Section */}
         <section>
           {selectedKPI === 'Student Attendance' ? (
-            <StudentAttendanceKPI academicYear={selectedAcademicYear} />
+            <StudentAttendanceKPI
+              academicYear={selectedAcademicYear}
+              onAcademicYearChange={setSelectedAcademicYear}
+            />
+          ) : selectedKPI === 'Pass Percentage' ? (
+            <PassPercentageKPI
+              academicYear={selectedAcademicYear}
+              onAcademicYearChange={setSelectedAcademicYear}
+            />
           ) : selectedKPI === 'Student-Faculty Ratio' ? (
             <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl p-5 sm:p-6 shadow-sm">
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">

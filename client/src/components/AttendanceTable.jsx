@@ -14,6 +14,7 @@ export default function AttendanceTable({ attendance }) {
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">S.No</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Enrollment Number</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Student Name</th>
+                <th className="px-4 py-3 text-[#1E293B] font-semibold">Academic Year</th>
                 {subjects.map((subject) => (
                   <th key={subject} className="px-4 py-3 text-[#1E293B] font-semibold">{subject}</th>
                 ))}
@@ -34,6 +35,11 @@ export default function AttendanceTable({ attendance }) {
                     <td className="px-4 py-3 text-[#1E293B]">{idx + 1}</td>
                     <td className="px-4 py-3 font-medium text-[#1E293B]">{a.enrollment_number || a.student_id}</td>
                     <td className="px-4 py-3 text-[#1E293B]">{a.student_name}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F0FDF4] text-[#16A34A] border border-[#DCFCE7]">
+                        {a.academic_year || a.academicYear || '2024-2025'}
+                      </span>
+                    </td>
                     {subjects.map((subject) => (
                       <td key={subject} className="px-4 py-3 text-[#1E293B]">
                         {a.subject_values?.[subject] ?? '—'}
