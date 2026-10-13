@@ -332,6 +332,7 @@ export default function StudentUploadPage() {
                   >
                     <option value="" disabled>Select Academic Year</option>
                     <option value="2024-2025">2024-2025</option>
+                    <option value="2025-2026">2025-2026</option>
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-[#64748B]">
                     <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
@@ -397,6 +398,7 @@ export default function StudentUploadPage() {
                     >
                       <option value="All">All Years</option>
                       <option value="2024-2025">2024-2025</option>
+                      <option value="2025-2026">2025-2026</option>
                     </select>
                   </div>
                 </div>
@@ -510,6 +512,7 @@ export default function StudentUploadPage() {
                     >
                       <option value="" disabled>Select Academic Year</option>
                       <option value="2024-2025">2024-2025</option>
+                      <option value="2025-2026">2025-2026</option>
                     </select>
                     <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-[#64748B]">
                       <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
@@ -575,6 +578,7 @@ export default function StudentUploadPage() {
                       >
                         <option value="All">All Years</option>
                         <option value="2024-2025">2024-2025</option>
+                        <option value="2025-2026">2025-2026</option>
                       </select>
                     </div>
                   </div>

@@ -9,7 +9,7 @@ import models
 import schemas
 import services
 
-VALID_ACADEMIC_YEARS = {"2024-2025"}
+VALID_ACADEMIC_YEARS = {"2024-2025", "2025-2026"}
 
 # Create database tables automatically and apply any missing column migrations
 database.init_db()
@@ -265,7 +265,7 @@ async def upload_students(
     if norm_year not in VALID_ACADEMIC_YEARS:
         return JSONResponse(
             status_code=400,
-            content={"message": "Invalid Academic Year. Only '2024-2025' is accepted."}
+            content={"message": "Invalid Academic Year. Only '2024-2025' and '2025-2026' are accepted."}
         )
 
     if not file or not file.filename:
@@ -343,7 +343,7 @@ async def upload_attendance(
     if norm_year not in VALID_ACADEMIC_YEARS:
         return JSONResponse(
             status_code=400,
-            content={"message": "Invalid Academic Year. Only '2024-2025' is accepted."}
+            content={"message": "Invalid Academic Year. Only '2024-2025' and '2025-2026' are accepted."}
         )
 
     if not file or not file.filename:

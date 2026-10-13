@@ -42,7 +42,9 @@ def normalize_academic_year(year: Optional[str]) -> Optional[str]:
     val = str(year).strip()
     if val in {"2024-2025", "2024-25", "2024–2025", "2024/2025"}:
         return "2024-2025"
-    raise ValueError(f"Invalid Academic Year '{year}'. Only '2024-2025' is accepted.")
+    if val in {"2025-2026", "2025-26", "2025–2026", "2025/2026"}:
+        return "2025-2026"
+    raise ValueError(f"Invalid Academic Year '{year}'. Allowed years are '2024-2025' and '2025-2026'.")
 
 
 def normalize_student_rows(raw_rows: Any, academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool]:
@@ -52,8 +54,8 @@ def normalize_student_rows(raw_rows: Any, academic_year: Optional[str] = None) -
         return [], False
 
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
-    if norm_year != "2024-2025":
-        raise ValueError(f"Invalid Academic Year '{academic_year}'. Only '2024-2025' is accepted.")
+    if norm_year not in {"2024-2025", "2025-2026"}:
+        raise ValueError(f"Invalid Academic Year '{academic_year}'. Only '2024-2025' and '2025-2026' are accepted.")
 
     # Check if this sheet is a subject-marks sheet with DM, DSC, COA, Python, ML
     sample_keys = {str(k).strip().lower(): k for k in raw_rows[0].keys()}
@@ -316,8 +318,8 @@ def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None
         return [], False, []
 
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
-    if norm_year != "2024-2025":
-        raise ValueError(f"Invalid Academic Year '{academic_year}'. Only '2024-2025' is accepted.")
+    if norm_year not in {"2024-2025", "2025-2026"}:
+        raise ValueError(f"Invalid Academic Year '{academic_year}'. Only '2024-2025' and '2025-2026' are accepted.")
 
     # Subject aliases for the 5 attendance subjects
     attendance_subject_aliases = {
@@ -886,7 +888,7 @@ def get_pass_percentage_kpi(db: Session, academic_year: Optional[str] = "2024-20
             ],
             "overall_pass_percentage": 0.0,
             "overall_fail_percentage": 0.0,
-            "message": "No evaluated student records with complete 5-subject marks found for academic year 2024-2025. Please upload student marks sheet to view Pass Percentage KPI."
+            "message": f"No evaluated student records with complete 5-subject marks found for academic year {norm_year}. Please upload student marks sheet to view Pass Percentage KPI."
         }
 
     subjects_data = []
@@ -1198,24 +1200,6 @@ def seed_initial_data(db: Session) -> None:
         db.add_all(kpis)
         db.commit()
 
-    # Seed Student Attendance
-    if db.query(models.StudentAttendance).count() == 0:
-        attendance_records = [
-            models.StudentAttendance(student_id="STU101", student_name="Aarav Sharma", department="Computer Science & Engineering", academic_year="2024-2025", total_classes=100, attended_classes=92, attendance_percentage=92.0),
-            models.StudentAttendance(student_id="STU102", student_name="Ananya Rao", department="Electronics & Communication Engineering", academic_year="2024-2025", total_classes=100, attended_classes=88, attendance_percentage=88.0),
-            models.StudentAttendance(student_id="STU103", student_name="Rohan Verma", department="Mechanical Engineering", academic_year="2024-2025", total_classes=100, attended_classes=72, attendance_percentage=72.0),
-            models.StudentAttendance(student_id="STU104", student_name="Priya Patel", department="Biotechnology", academic_year="2024-2025", total_classes=100, attended_classes=85, attendance_percentage=85.0),
-            models.StudentAttendance(student_id="STU105", student_name="Vikram Singh", department="Civil Engineering", academic_year="2024-2025", total_classes=100, attended_classes=64, attendance_percentage=64.0),
-            models.StudentAttendance(student_id="STU106", student_name="Sneha Reddy", department="Computer Science & Engineering", academic_year="2024-2025", total_classes=100, attended_classes=96, attendance_percentage=96.0),
-            models.StudentAttendance(student_id="STU107", student_name="Rahul Nair", department="Electrical & Electronics Engineering", academic_year="2024-2025", total_classes=100, attended_classes=78, attendance_percentage=78.0),
-            models.StudentAttendance(student_id="STU108", student_name="Kavya Iyer", department="Electronics & Communication Engineering", academic_year="2024-2025", total_classes=100, attended_classes=82, attendance_percentage=82.0),
-            models.StudentAttendance(student_id="STU109", student_name="Aditya Joshi", department="Mechanical Engineering", academic_year="2024-2025", total_classes=100, attended_classes=58, attendance_percentage=58.0),
-            models.StudentAttendance(student_id="STU110", student_name="Meera Sen", department="Computer Science & Engineering", academic_year="2024-2025", total_classes=100, attended_classes=89, attendance_percentage=89.0),
-            models.StudentAttendance(student_id="STU111", student_name="Divya Menon", department="Biotechnology", academic_year="2024-2025", total_classes=100, attended_classes=76, attendance_percentage=76.0),
-            models.StudentAttendance(student_id="STU112", student_name="Karthik Raju", department="Computer Science & Engineering", academic_year="2024-2025", total_classes=100, attended_classes=69, attendance_percentage=69.0),
-        ]
-        db.add_all(attendance_records)
-        db.commit()
 
     # Seed Laboratory Utilization
     if db.query(models.LaboratoryUtilization).count() == 0:
@@ -1233,15 +1217,5 @@ def seed_initial_data(db: Session) -> None:
         db.add_all(lab_records)
         db.commit()
 
-    # Seed Sample Students if student_uploads is empty
-    if db.query(models.StudentUpload).count() == 0:
-        students = [
-            models.StudentUpload(studentId="STU101", studentName="Aarav Sharma", totalMarks=510, percentage=85.0, academic_year="2024-2025"),
-            models.StudentUpload(studentId="STU102", studentName="Ananya Rao", totalMarks=540, percentage=90.0, academic_year="2024-2025"),
-            models.StudentUpload(studentId="STU103", studentName="Rohan Verma", totalMarks=432, percentage=72.0, academic_year="2024-2025"),
-            models.StudentUpload(studentId="STU104", studentName="Priya Patel", totalMarks=468, percentage=78.0, academic_year="2024-2025"),
-            models.StudentUpload(studentId="STU105", studentName="Vikram Singh", totalMarks=492, percentage=82.0, academic_year="2024-2025")
-        ]
-        db.add_all(students)
-        db.commit()
+
 

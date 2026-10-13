@@ -10,3 +10,6 @@ __pycache__/
 *.pyc
 server/venv/
 *.db
+
+# Local database backups
+server/backup/

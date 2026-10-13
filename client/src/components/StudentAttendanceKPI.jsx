@@ -52,7 +52,14 @@ const getSubjectLabel = (subject) => {
 
 const isNonSubjectColumn = (subject) => /^s\.?\s*no\.?$/i.test(String(subject).trim());
 
-export default function StudentAttendanceKPI({ academicYear = '2024-2025' }) {
+export default function StudentAttendanceKPI({ academicYear = '2024-2025', onAcademicYearChange }) {
+  const [internalYear, setInternalYear] = useState(academicYear);
+
+  useEffect(() => {
+    setInternalYear(academicYear);
+  }, [academicYear]);
+
+  const activeYear = internalYear || academicYear;
   const [attendanceData, setAttendanceData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDept, setSelectedDept] = useState('All');
@@ -67,7 +74,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025' }) {
     async function fetchAttendance() {
       setIsLoading(true);
       try {
-        const queryParam = academicYear ? `?academic_year=${encodeURIComponent(academicYear)}` : '';
+        const queryParam = activeYear ? `?academic_year=${encodeURIComponent(activeYear)}` : '';
         const res = await fetch(`${API_BASE_URL}/api/attendance${queryParam}`);
         if (res.ok) {
           const data = await res.json();
@@ -82,21 +89,21 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025' }) {
       }
     }
     fetchAttendance();
-  }, [academicYear]);
+  }, [activeYear]);
 
   // Filter list by selected department and academic year
   const filteredData = useMemo(() => {
     return attendanceData.filter((item) => {
       const itemYear = item.academic_year || item.academicYear;
-      if (academicYear && itemYear) {
-        const normItemYear = itemYear === '2024-25' ? '2024-2025' : itemYear;
-        const normPropYear = academicYear === '2024-25' ? '2024-2025' : academicYear;
+      if (activeYear && itemYear) {
+        const normItemYear = itemYear === '2024-25' ? '2024-2025' : itemYear === '2025-26' ? '2025-2026' : itemYear;
+        const normPropYear = activeYear === '2024-25' ? '2024-2025' : activeYear === '2025-26' ? '2025-2026' : activeYear;
         if (normItemYear !== normPropYear) return false;
       }
       if (selectedDept !== 'All' && item.department !== selectedDept) return false;
       return true;
     });
-  }, [attendanceData, selectedDept, academicYear]);
+  }, [attendanceData, selectedDept, activeYear]);
 
   const DEFAULT_SUBJECTS = useMemo(() => [
     'Power Skills - III',
@@ -291,7 +298,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025' }) {
                   <BarChart3 className="w-3.5 h-3.5" />
                   Key Performance Indicator
                 </span>
-                <span className="text-xs font-semibold text-slate-500">• Academic Year {academicYear}</span>
+                <span className="text-xs font-semibold text-slate-500">• Academic Year {activeYear}</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
                 <span>Student Attendance KPI</span>
@@ -302,8 +309,24 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025' }) {
               </p>
             </div>
 
-            {/* Department Filter & Controls */}
+            {/* Department & Academic Year Filters */}
             <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                <span className="text-xs font-bold text-slate-700">Year:</span>
+                <select
+                  value={activeYear}
+                  onChange={(e) => {
+                    const newYear = e.target.value;
+                    setInternalYear(newYear);
+                    if (onAcademicYearChange) onAcademicYearChange(newYear);
+                  }}
+                  className="bg-transparent text-xs font-semibold text-slate-900 focus:outline-none cursor-pointer pr-2"
+                >
+                  <option value="2024-2025">2024-2025</option>
+                  <option value="2025-2026">2025-2026</option>
+                </select>
+              </div>
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs">
                 <Filter className="w-4 h-4 text-blue-600" />
                 <span className="text-xs font-bold text-slate-700">Dept:</span>
@@ -335,9 +358,9 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025' }) {
               <div className="mx-auto w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
                 <Calendar className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-slate-800">No Attendance Records for Academic Year {academicYear}</h3>
+              <h3 className="text-base font-bold text-slate-800">No Attendance Records for Academic Year {activeYear}</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                There are currently no student attendance records in the database for the {academicYear} academic session. Upload an attendance sheet for {academicYear} to view live KPI analytics.
+                There are currently no student attendance records in the database for the {activeYear} academic session. Upload an attendance sheet for {activeYear} to view live KPI analytics.
               </p>
             </div>
           )}

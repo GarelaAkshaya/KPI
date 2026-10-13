@@ -75,6 +75,7 @@ export default function KPIDashboardPage() {
 
   const yearOptions = [
     '2024-2025',
+    '2025-2026',
   ];
 
   const laboratoryUtilizationData = [
@@ -260,9 +261,15 @@ export default function KPIDashboardPage() {
         {/* Main KPI Content Section */}
         <section>
           {selectedKPI === 'Student Attendance' ? (
-            <StudentAttendanceKPI academicYear={selectedAcademicYear} />
+            <StudentAttendanceKPI
+              academicYear={selectedAcademicYear}
+              onAcademicYearChange={setSelectedAcademicYear}
+            />
           ) : selectedKPI === 'Pass Percentage' ? (
-            <PassPercentageKPI academicYear={selectedAcademicYear} />
+            <PassPercentageKPI
+              academicYear={selectedAcademicYear}
+              onAcademicYearChange={setSelectedAcademicYear}
+            />
           ) : selectedKPI === 'Student-Faculty Ratio' ? (
             <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl p-5 sm:p-6 shadow-sm">
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
