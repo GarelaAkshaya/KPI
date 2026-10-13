@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Navbar from '../components/Navbar';
 import StudentAttendanceKPI from '../components/StudentAttendanceKPI';
+import PassPercentageKPI from '../components/PassPercentageKPI';
 import { BarChart3, Calendar, Filter, AreaChart, PieChart, Layers, ArrowUpRight, Info, Users, UserRound, Database, FileText, Settings, Bell, Home, Upload, SlidersHorizontal } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -74,7 +75,6 @@ export default function KPIDashboardPage() {
 
   const yearOptions = [
     '2024-2025',
-    '2025-2026',
   ];
 
   const laboratoryUtilizationData = [
@@ -261,6 +261,8 @@ export default function KPIDashboardPage() {
         <section>
           {selectedKPI === 'Student Attendance' ? (
             <StudentAttendanceKPI academicYear={selectedAcademicYear} />
+          ) : selectedKPI === 'Pass Percentage' ? (
+            <PassPercentageKPI academicYear={selectedAcademicYear} />
           ) : selectedKPI === 'Student-Faculty Ratio' ? (
             <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-2xl p-5 sm:p-6 shadow-sm">
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">

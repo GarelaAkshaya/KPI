@@ -32,6 +32,7 @@ Base = declarative_base()
 
 
 def init_db():
+    import models
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
         try:
@@ -49,11 +50,11 @@ def init_db():
                     result = conn.exec_driver_sql(
                         f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table_name}'"
                     )
-                    existing_cols = {row[0] for row in result.fetchall()}
+                    existing_cols = {row[0].lower() for row in result.fetchall()}
                     for col in table.columns:
-                        if col.name not in existing_cols:
+                        if col.name.lower() not in existing_cols:
                             col_type = col.type.compile(engine.dialect)
-                            conn.exec_driver_sql(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col.name} {col_type}")
+                            conn.exec_driver_sql(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS "{col.name}" {col_type}')
                             conn.commit()
             
             # Ensure existing student and attendance records have academic_year set to 2024-2025
@@ -64,8 +65,8 @@ def init_db():
                 "UPDATE student_attendance SET academic_year = '2024-2025' WHERE academic_year = '2024-25' OR academic_year IS NULL OR academic_year = ''"
             )
             conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            print("init_db migration note:", e)
 
 
 def get_db():

@@ -9,7 +9,7 @@ import models
 import schemas
 import services
 
-VALID_ACADEMIC_YEARS = {"2024-2025", "2025-2026"}
+VALID_ACADEMIC_YEARS = {"2024-2025"}
 
 # Create database tables automatically and apply any missing column migrations
 database.init_db()
@@ -92,6 +92,18 @@ def get_student_faculty_ratio_trend(db: Session = Depends(database.get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to calculate student-faculty ratio trend: {str(e)}"
+        )
+
+
+@app.get("/api/kpis/pass-percentage", response_model=schemas.PassPercentageKPIResponse)
+def get_pass_percentage_kpi(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
+    try:
+        norm_year = services.normalize_academic_year(academic_year) or "2024-2025"
+        return services.get_pass_percentage_kpi(db, academic_year=norm_year)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to calculate pass percentage KPI: {str(e)}"
         )
 
 
@@ -243,11 +255,17 @@ async def upload_students(
             content={"message": "Academic Year is required. Please select an academic year."}
         )
 
-    norm_year = services.normalize_academic_year(selected_year)
+    try:
+        norm_year = services.normalize_academic_year(selected_year)
+    except ValueError as ve:
+        return JSONResponse(
+            status_code=400,
+            content={"message": str(ve)}
+        )
     if norm_year not in VALID_ACADEMIC_YEARS:
         return JSONResponse(
             status_code=400,
-            content={"message": "Invalid Academic Year. Must be either '2024-2025' or '2025-2026'."}
+            content={"message": "Invalid Academic Year. Only '2024-2025' is accepted."}
         )
 
     if not file or not file.filename:
@@ -269,13 +287,13 @@ async def upload_students(
         if not records:
             return JSONResponse(
                 status_code=400,
-                content={"message": "Excel sheet is empty or could not be parsed."}
+                content={"message": "Excel sheet is empty or contains no valid student rows."}
             )
 
         if has_invalid_row:
             return JSONResponse(
                 status_code=400,
-                content={"message": "One or more rows are missing Student ID or Student Name."}
+                content={"message": "One or more rows are missing Enrollment Number or Student Name."}
             )
 
         saved_count = services.save_student_records(db, records, academic_year=norm_year)
@@ -286,11 +304,16 @@ async def upload_students(
             "academic_year": norm_year,
             "academicYear": norm_year
         }
+    except ValueError as ve:
+        return JSONResponse(
+            status_code=400,
+            content={"message": str(ve)}
+        )
     except Exception as e:
         return JSONResponse(
             status_code=500,
             content={
-                "message": "Failed to process the uploaded Excel file.",
+                "message": f"Failed to process the uploaded Excel file: {str(e)}",
                 "error": str(e)
             }
         )
@@ -310,11 +333,17 @@ async def upload_attendance(
             content={"message": "Academic Year is required. Please select an academic year."}
         )
 
-    norm_year = services.normalize_academic_year(selected_year)
+    try:
+        norm_year = services.normalize_academic_year(selected_year)
+    except ValueError as ve:
+        return JSONResponse(
+            status_code=400,
+            content={"message": str(ve)}
+        )
     if norm_year not in VALID_ACADEMIC_YEARS:
         return JSONResponse(
             status_code=400,
-            content={"message": "Invalid Academic Year. Must be either '2024-2025' or '2025-2026'."}
+            content={"message": "Invalid Academic Year. Only '2024-2025' is accepted."}
         )
 
     if not file or not file.filename:
@@ -338,7 +367,7 @@ async def upload_attendance(
         if not records:
             return JSONResponse(
                 status_code=400,
-                content={"message": "Attendance Excel sheet is empty or could not be parsed."}
+                content={"message": "Attendance Excel sheet is empty or contains no valid records."}
             )
 
         if has_invalid_row:
@@ -352,7 +381,7 @@ async def upload_attendance(
             return JSONResponse(
                 status_code=400,
                 content={
-                    "message": f"Attendance rows could not be matched to existing students for academic year {norm_year}.",
+                    "message": f"Attendance rows could not be matched to existing students for academic year {norm_year}. Please ensure student marks records are uploaded first.",
                     "unmatched_enrollments": unmatched_enrollments
                 }
             )
@@ -369,11 +398,16 @@ async def upload_attendance(
             "academic_year": norm_year,
             "academicYear": norm_year
         }
+    except ValueError as ve:
+        return JSONResponse(
+            status_code=400,
+            content={"message": str(ve)}
+        )
     except Exception as e:
         return JSONResponse(
             status_code=500,
             content={
-                "message": "Failed to process the uploaded Attendance Excel file.",
+                "message": f"Failed to process the uploaded Attendance Excel file: {str(e)}",
                 "error": str(e)
             }
         )

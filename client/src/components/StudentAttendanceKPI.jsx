@@ -89,8 +89,8 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025' }) {
     return attendanceData.filter((item) => {
       const itemYear = item.academic_year || item.academicYear;
       if (academicYear && itemYear) {
-        const normItemYear = itemYear === '2024-25' ? '2024-2025' : itemYear === '2025-26' ? '2025-2026' : itemYear;
-        const normPropYear = academicYear === '2024-25' ? '2024-2025' : academicYear === '2025-26' ? '2025-2026' : academicYear;
+        const normItemYear = itemYear === '2024-25' ? '2024-2025' : itemYear;
+        const normPropYear = academicYear === '2024-25' ? '2024-2025' : academicYear;
         if (normItemYear !== normPropYear) return false;
       }
       if (selectedDept !== 'All' && item.department !== selectedDept) return false;
