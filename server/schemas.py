@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class StudentUploadSchema(BaseModel):
@@ -149,6 +149,30 @@ class StudentAttendanceSchema(StudentAttendanceBase):
 
     class Config:
         from_attributes = True
+
+
+# Student Feedback Schemas
+class StudentFeedbackCreate(BaseModel):
+    academic_year: str = Field(min_length=1, max_length=20)
+    department: str = Field(min_length=1, max_length=255)
+    teaching_quality: int = Field(ge=1, le=5)
+    course_content: int = Field(ge=1, le=5)
+    learning_resources: int = Field(ge=1, le=5)
+    faculty_support: int = Field(ge=1, le=5)
+    overall_satisfaction: int = Field(ge=1, le=5)
+    comment: Optional[str] = Field(default=None, max_length=5000)
+
+
+class StudentFeedbackSubmissionResponse(BaseModel):
+    message: str
+
+
+class StudentFeedbackSummaryResponse(BaseModel):
+    academic_year: Optional[str] = None
+    department: Optional[str] = None
+    total_responses: int
+    averages: dict[str, Optional[float]]
+    rating_distributions: dict[str, dict[int, int]]
 
 
 # Laboratory Utilization Schemas

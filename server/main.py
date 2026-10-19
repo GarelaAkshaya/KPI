@@ -58,6 +58,79 @@ def get_stats(academic_year: Optional[str] = None, db: Session = Depends(databas
         )
 
 
+@app.post(
+    "/api/feedback",
+    response_model=schemas.StudentFeedbackSubmissionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_student_feedback(
+    feedback: schemas.StudentFeedbackCreate,
+    db: Session = Depends(database.get_db),
+):
+    """Store anonymous student feedback without student identifiers."""
+    try:
+        data = feedback.model_dump()
+        data["academic_year"] = services.normalize_academic_year(feedback.academic_year)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+
+    record = models.StudentFeedback(**data)
+    try:
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save student feedback: {str(e)}",
+        )
+    return {"message": "Feedback submitted successfully."}
+
+
+@app.get("/api/feedback/summary", response_model=schemas.StudentFeedbackSummaryResponse)
+def get_student_feedback_summary(
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+):
+    """Return aggregate feedback only; individual submissions are not exposed."""
+    query = db.query(models.StudentFeedback)
+    norm_year = services.normalize_academic_year(academic_year)
+    if norm_year:
+        query = query.filter(models.StudentFeedback.academic_year == norm_year)
+    selected_department = department.strip() if department and department.strip() else None
+    if selected_department:
+        query = query.filter(models.StudentFeedback.department == selected_department)
+
+    fields = (
+        "teaching_quality",
+        "course_content",
+        "learning_resources",
+        "faculty_support",
+        "overall_satisfaction",
+    )
+    rows = query.with_entities(*[getattr(models.StudentFeedback, field) for field in fields]).all()
+    distributions = {field: {rating: 0 for rating in range(1, 6)} for field in fields}
+    totals = {field: 0 for field in fields}
+    for row in rows:
+        for field, rating in zip(fields, row):
+            totals[field] += rating
+            distributions[field][rating] += 1
+
+    averages = {
+        field: round(total / len(rows), 2) if rows else None
+        for field, total in totals.items()
+    }
+    return {
+        "academic_year": norm_year,
+        "department": selected_department,
+        "total_responses": len(rows),
+        "averages": averages,
+        "rating_distributions": distributions,
+    }
+
+
 @app.get("/api/kpis/summary", response_model=schemas.KPISummaryResponse)
 def get_kpi_summary(academic_year: Optional[str] = None, db: Session = Depends(database.get_db)):
     """Fetch all calculated KPI values for the dashboard."""

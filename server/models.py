@@ -124,6 +124,21 @@ class KPI(Base):
     unit = Column(String, nullable=True)
 
 
+class StudentFeedback(Base):
+    __tablename__ = "student_feedback"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    academic_year = Column(String, nullable=False, index=True)
+    department = Column(String, nullable=False, index=True)
+    teaching_quality = Column(Integer, nullable=False)
+    course_content = Column(Integer, nullable=False)
+    learning_resources = Column(Integer, nullable=False)
+    faculty_support = Column(Integer, nullable=False)
+    overall_satisfaction = Column(Integer, nullable=False)
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class StudentAttendance(Base):
     __tablename__ = "student_attendance"
 
