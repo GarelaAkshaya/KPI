@@ -2,11 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import Navbar from '../components/Navbar';
 import StudentAttendanceKPI from '../components/StudentAttendanceKPI';
 import PassPercentageKPI from '../components/PassPercentageKPI';
+import StudentFeedbackKPI from '../components/StudentFeedbackKPI';
+import { useLocation } from 'react-router-dom';
 import { BarChart3, Calendar, Filter, AreaChart, PieChart, Layers, ArrowUpRight, Info, Users, UserRound, Database, FileText, Settings, Bell, Home, Upload, SlidersHorizontal } from 'lucide-react';
 import { API_BASE_URL } from '../api';
 
 export default function KPIDashboardPage() {
-  const [selectedKPI, setSelectedKPI] = useState('Student Attendance');
+  const location = useLocation();
+  const [selectedKPI, setSelectedKPI] = useState(location.state?.selectedKPI || 'Student Attendance');
   const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
   const [ratioData, setRatioData] = useState(null);
   const [ratioTrend, setRatioTrend] = useState([]);
@@ -70,6 +73,7 @@ export default function KPIDashboardPage() {
     'Student-Faculty Ratio',
     'Pass Percentage',
     'Laboratory Utilization',
+    'Student Feedback Improvement',
   ];
 
   const yearOptions = [
@@ -475,6 +479,8 @@ export default function KPIDashboardPage() {
                 </div>
               </div>
             </div>
+          ) : selectedKPI === 'Student Feedback Improvement' ? (
+            <StudentFeedbackKPI academicYear={selectedAcademicYear} />
           ) : (
             <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-3xl p-6 sm:p-8 shadow-sm">
               <div className="relative min-h-[420px] flex flex-col items-center justify-center text-center">

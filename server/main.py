@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Depends, File, UploadFile, Form, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 import database
@@ -68,12 +69,9 @@ def submit_student_feedback(
     db: Session = Depends(database.get_db),
 ):
     """Store anonymous student feedback without student identifiers."""
-    try:
-        data = feedback.model_dump()
-        data["academic_year"] = services.normalize_academic_year(feedback.academic_year)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
-
+    # These columns are required by the existing shared table; empty values keep
+    # legacy schema compatibility without collecting academic details.
+    data = {**feedback.model_dump(), "academic_year": "", "department": ""}
     record = models.StudentFeedback(**data)
     try:
         db.add(record)
@@ -95,13 +93,23 @@ def get_student_feedback_summary(
     db: Session = Depends(database.get_db),
 ):
     """Return aggregate feedback only; individual submissions are not exposed."""
-    query = db.query(models.StudentFeedback)
+    base_query = db.query(models.StudentFeedback)
     norm_year = services.normalize_academic_year(academic_year)
-    if norm_year:
-        query = query.filter(models.StudentFeedback.academic_year == norm_year)
     selected_department = department.strip() if department and department.strip() else None
     if selected_department:
-        query = query.filter(models.StudentFeedback.department == selected_department)
+        base_query = base_query.filter(models.StudentFeedback.department == selected_department)
+
+    all_responses = base_query.count()
+    unattributed_responses = base_query.filter(
+        or_(
+            models.StudentFeedback.academic_year.is_(None),
+            func.trim(models.StudentFeedback.academic_year) == "",
+        )
+    ).count()
+    query = base_query
+    if norm_year:
+        query = query.filter(models.StudentFeedback.academic_year == norm_year)
+    selected_year_responses = query.count()
 
     fields = (
         "teaching_quality",
@@ -110,7 +118,8 @@ def get_student_feedback_summary(
         "faculty_support",
         "overall_satisfaction",
     )
-    rows = query.with_entities(*[getattr(models.StudentFeedback, field) for field in fields]).all()
+    records = query.order_by(models.StudentFeedback.created_at.asc()).all()
+    rows = [tuple(getattr(record, field) for field in fields) for record in records]
     distributions = {field: {rating: 0 for rating in range(1, 6)} for field in fields}
     totals = {field: 0 for field in fields}
     for row in rows:
@@ -122,12 +131,29 @@ def get_student_feedback_summary(
         field: round(total / len(rows), 2) if rows else None
         for field, total in totals.items()
     }
+    by_day = {}
+    for record in records:
+        day = record.created_at.date().isoformat()
+        bucket = by_day.setdefault(day, {"responses": 0, **{field: 0 for field in fields}})
+        bucket["responses"] += 1
+        for field in fields:
+            bucket[field] += getattr(record, field)
+    timeline = [
+        {"date": day, "responses": bucket["responses"], **{
+            field: round(bucket[field] / bucket["responses"], 2) for field in fields
+        }}
+        for day, bucket in by_day.items()
+    ]
     return {
         "academic_year": norm_year,
         "department": selected_department,
         "total_responses": len(rows),
+        "all_responses": all_responses,
+        "unattributed_responses": unattributed_responses,
+        "other_year_responses": max(0, all_responses - selected_year_responses - unattributed_responses),
         "averages": averages,
         "rating_distributions": distributions,
+        "timeline": timeline,
     }
 
 
