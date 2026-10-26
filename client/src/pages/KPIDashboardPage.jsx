@@ -11,7 +11,6 @@ export default function KPIDashboardPage() {
   const location = useLocation();
   const [selectedKPI, setSelectedKPI] = useState(location.state?.selectedKPI || 'Student Attendance');
   const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
-  const [selectedDepartment, setSelectedDepartment] = useState('Computer Science and Engineering');
   const [selectedSection, setSelectedSection] = useState('');
   const [sectionOptions, setSectionOptions] = useState([]);
   const [laboratoryUtilizationRows, setLaboratoryUtilizationRows] = useState([]);
@@ -24,6 +23,17 @@ export default function KPIDashboardPage() {
   const [ratioLoading, setRatioLoading] = useState(false);
   const [ratioError, setRatioError] = useState('');
 
+  const activeSectionInfo = React.useMemo(() => {
+    if (!selectedSection) return { section: '', department: '', label: 'All sections', value: '' };
+    const found = sectionOptions.find((o) => o.value === selectedSection);
+    if (found) return found;
+    if (selectedSection.includes('::')) {
+      const [sec, dept] = selectedSection.split('::');
+      return { section: sec, department: dept, label: `Section ${sec} (${dept})`, value: selectedSection };
+    }
+    return { section: selectedSection, department: '', label: `Section ${selectedSection}`, value: selectedSection };
+  }, [selectedSection, sectionOptions]);
+
   useEffect(() => {
     if (selectedKPI !== 'Student-Faculty Ratio') return undefined;
 
@@ -31,8 +41,14 @@ export default function KPIDashboardPage() {
     setRatioLoading(true);
     setRatioError('');
 
+    const queryParams = new URLSearchParams({
+      academic_year: selectedAcademicYear,
+      ...(activeSectionInfo.department ? { department: activeSectionInfo.department } : {}),
+      ...(activeSectionInfo.section ? { section: activeSectionInfo.section } : {}),
+    });
+
     Promise.all([
-      apiFetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio?${new URLSearchParams({ academic_year: selectedAcademicYear, department: selectedDepartment, ...(selectedSection ? { section: selectedSection } : {}) })}`, { signal: controller.signal }),
+      apiFetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio?${queryParams}`, { signal: controller.signal }),
       apiFetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio/trend`, { signal: controller.signal }),
     ])
       .then(async ([ratioResponse, trendResponse]) => {
@@ -54,25 +70,48 @@ export default function KPIDashboardPage() {
       });
 
     return () => controller.abort();
-  }, [selectedKPI, selectedAcademicYear, selectedDepartment, selectedSection]);
+  }, [selectedKPI, selectedAcademicYear, activeSectionInfo]);
 
   useEffect(() => {
     const controller = new AbortController();
-    apiFetch(`${API_BASE_URL}/api/filters/sections?${new URLSearchParams({ academic_year: selectedAcademicYear, department: selectedDepartment })}`, { signal: controller.signal })
+    apiFetch(`${API_BASE_URL}/api/filters/sections?${new URLSearchParams({ academic_year: selectedAcademicYear })}`, { signal: controller.signal })
       .then((response) => response.ok ? response.json() : [])
       .then((sections) => {
-        const next = Array.isArray(sections) ? sections : [];
+        const next = (Array.isArray(sections) ? sections : []).map((item) => {
+          if (typeof item === 'string') {
+            const [sec, dept] = item.includes('::') ? item.split('::') : [item, ''];
+            return {
+              section: sec,
+              department: dept,
+              label: dept ? `Section ${sec} (${dept})` : `Section ${sec}`,
+              value: dept ? `${sec}::${dept}` : sec,
+            };
+          }
+          return {
+            section: item.section,
+            department: item.department,
+            label: item.label || (item.department ? `Section ${item.section} (${item.department})` : `Section ${item.section}`),
+            value: item.value || (item.department ? `${item.section}::${item.department}` : item.section),
+          };
+        });
         setSectionOptions(next);
-        if (selectedSection && !next.includes(selectedSection)) setSelectedSection('');
+        if (selectedSection && !next.some((opt) => opt.value === selectedSection)) {
+          setSelectedSection('');
+        }
       })
       .catch(() => setSectionOptions([]));
     return () => controller.abort();
-  }, [selectedAcademicYear, selectedDepartment, selectedSection]);
+  }, [selectedAcademicYear, selectedSection]);
 
   useEffect(() => {
     if (selectedKPI !== 'Laboratory Utilization') return undefined;
     const controller = new AbortController();
-    apiFetch(`${API_BASE_URL}/api/lab-utilization?${new URLSearchParams({ academic_year: selectedAcademicYear, department: selectedDepartment, ...(selectedSection ? { section: selectedSection } : {}) })}`, { signal: controller.signal })
+    const queryParams = new URLSearchParams({
+      academic_year: selectedAcademicYear,
+      ...(activeSectionInfo.department ? { department: activeSectionInfo.department } : {}),
+      ...(activeSectionInfo.section ? { section: activeSectionInfo.section } : {}),
+    });
+    apiFetch(`${API_BASE_URL}/api/lab-utilization?${queryParams}`, { signal: controller.signal })
       .then((response) => response.ok ? response.json() : [])
       .then((rows) => setLaboratoryUtilizationRows((Array.isArray(rows) ? rows : []).map((row) => ({
         laboratoryName: row.laboratory_name,
@@ -84,7 +123,7 @@ export default function KPIDashboardPage() {
       }))))
       .catch(() => setLaboratoryUtilizationRows([]));
     return () => controller.abort();
-  }, [selectedKPI, selectedAcademicYear, selectedDepartment, selectedSection]);
+  }, [selectedKPI, selectedAcademicYear, activeSectionInfo]);
 
   const exportRatioReport = () => {
     if (!ratioData) return;
@@ -202,7 +241,7 @@ export default function KPIDashboardPage() {
               <div className="text-xs">
                 <p className="text-[#64748B] font-medium">Current View Filter</p>
                 <p className="font-bold text-[#1E293B]">
-                  {selectedKPI} <span className="text-[#2563EB]">({selectedAcademicYear} · {selectedDepartment}{selectedSection ? ` · ${selectedSection}` : ''})</span>
+                  {selectedKPI} <span className="text-[#2563EB]">({selectedAcademicYear}{activeSectionInfo.section ? ` · Section ${activeSectionInfo.section}` : ' · All sections'}{activeSectionInfo.department ? ` · ${activeSectionInfo.department}` : ''})</span>
                 </p>
               </div>
             </div>
@@ -217,7 +256,7 @@ export default function KPIDashboardPage() {
               <span>Select Indicator & Data Scope</span>
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               
               {/* Dropdown 1: KPI */}
               <div className="space-y-2">
@@ -247,18 +286,10 @@ export default function KPIDashboardPage() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="department-select" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B]">Department</label>
-                <select id="department-select" value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3.5 text-[#1E293B] text-sm font-semibold">
-                  <option>Computer Science and Engineering</option>
-                  <option>AI &amp; Data Science</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
                 <label htmlFor="section-select" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B]">Section</label>
                 <select id="section-select" value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)} className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3.5 text-[#1E293B] text-sm font-semibold">
                   <option value="">All sections</option>
-                  {sectionOptions.map((section) => <option key={section} value={section}>{section}</option>)}
+                  {sectionOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
               </div>
 
@@ -299,15 +330,15 @@ export default function KPIDashboardPage() {
           {selectedKPI === 'Student Attendance' ? (
             <StudentAttendanceKPI
               academicYear={selectedAcademicYear}
-              department={selectedDepartment}
-              section={selectedSection}
+              department={activeSectionInfo.department}
+              section={activeSectionInfo.section}
               onAcademicYearChange={setSelectedAcademicYear}
             />
           ) : selectedKPI === 'Pass Percentage' ? (
             <PassPercentageKPI
               academicYear={selectedAcademicYear}
-              department={selectedDepartment}
-              section={selectedSection}
+              department={activeSectionInfo.department}
+              section={activeSectionInfo.section}
               onAcademicYearChange={setSelectedAcademicYear}
             />
           ) : selectedKPI === 'Student-Faculty Ratio' ? (
@@ -457,7 +488,7 @@ export default function KPIDashboardPage() {
 
                 {laboratoryUtilizationRows.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-6 py-12 text-center text-sm text-[#64748B]">
-                    No laboratory-utilization records match {selectedAcademicYear}, {selectedDepartment}{selectedSection ? `, section ${selectedSection}` : ''}.
+                    No laboratory-utilization records match {selectedAcademicYear}{activeSectionInfo.department ? `, ${activeSectionInfo.department}` : ''}{activeSectionInfo.section ? `, section ${activeSectionInfo.section}` : ''}.
                   </div>
                 )}
 
@@ -523,7 +554,7 @@ export default function KPIDashboardPage() {
               </div>
             </div>
           ) : selectedKPI === 'Student Feedback Improvement' ? (
-            <StudentFeedbackKPI academicYear={selectedAcademicYear} department={selectedDepartment} section={selectedSection} />
+            <StudentFeedbackKPI academicYear={selectedAcademicYear} department={activeSectionInfo.department} section={activeSectionInfo.section} />
           ) : (
             <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-3xl p-6 sm:p-8 shadow-sm">
               <div className="relative min-h-[420px] flex flex-col items-center justify-center text-center">

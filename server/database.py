@@ -64,6 +64,9 @@ def init_db():
             conn.exec_driver_sql(
                 "UPDATE student_attendance SET academic_year = '2024-2025' WHERE academic_year = '2024-25' OR academic_year IS NULL OR academic_year = ''"
             )
+            conn.exec_driver_sql(
+                "UPDATE laboratory_utilization SET academic_year = '2024-2025' WHERE academic_year = '2024-25' OR academic_year IS NULL OR academic_year = ''"
+            )
             conn.commit()
         except Exception as e:
             print("init_db migration note:", e)

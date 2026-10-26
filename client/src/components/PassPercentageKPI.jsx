@@ -101,7 +101,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 <span className="text-2xl">🎓</span>
               </h2>
               <p className="text-slate-600 text-xs sm:text-sm mt-1 max-w-2xl">
-                Comprehensive semester outcome tracking for Artificial Intelligence and Data Science (AIDS), evaluating subject-level pass thresholds (≥ 40 marks) and overall student success across all 5 mandatory subjects.
+                Comprehensive semester outcome tracking evaluating subject-level pass thresholds (≥ 40 marks) and overall student success across all 5 mandatory subjects.
               </p>
             </div>
 
@@ -125,7 +125,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
 
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700">
                 <BookOpen className="w-4 h-4 text-[#4F46E5]" />
-                <span>Dept: AIDS</span>
+                <span>Section: {section ? `Section ${section}${department ? ` (${department})` : ''}` : 'All sections'}</span>
               </div>
 
               <button
@@ -633,7 +633,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 Subject-Level Performance Breakdown
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Detailed passing and failing student headcounts for Department of Artificial Intelligence & Data Science.
+                Detailed passing and failing student headcounts{department ? ` for Department of ${department}` : ''}.
               </p>
             </div>
             <span className="px-3 py-1 rounded-full bg-indigo-50 text-[#4F46E5] text-xs font-bold">

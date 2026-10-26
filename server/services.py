@@ -930,8 +930,14 @@ def get_total_faculty(db: Session, department: Optional[str] = None) -> int:
 
 def get_student_faculty_ratio_data(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year)
-    total_students = get_student_count(db, academic_year=norm_year, department=department, section=section)
-    total_faculty = get_total_faculty(db, department=department)
+    sec_name, sec_dept = parse_section_identifier(section)
+    effective_dept = department or sec_dept
+    effective_sec = sec_name if sec_name is not None else section
+    if effective_sec and not effective_dept:
+        effective_dept = find_department_for_section(db, effective_sec, norm_year)
+
+    total_students = get_student_count(db, academic_year=norm_year, department=effective_dept, section=effective_sec)
+    total_faculty = get_total_faculty(db, department=effective_dept)
     if total_faculty == 0:
         return {
             "totalStudents": total_students,
@@ -1030,28 +1036,100 @@ def canonicalize_department_name(value: Optional[str]) -> Optional[str]:
     return None
 
 
+def parse_section_identifier(section: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract (section_name, department) from internal composite section identifier if present.
+    Supports formats like:
+      - "A::Computer Science and Engineering" -> ("A", "Computer Science and Engineering")
+      - "A::AI & Data Science" -> ("A", "AI & Data Science")
+      - "A" -> ("A", None)
+    """
+    if not section:
+        return None, None
+    s = section.strip()
+    if "::" in s:
+        parts = s.split("::", 1)
+        return parts[0].strip(), parts[1].strip()
+    return s, None
+
+
+def find_department_for_section(db: Session, section: Optional[str], academic_year: Optional[str] = None) -> Optional[str]:
+    """Find the department that owns this section if it uniquely belongs to one."""
+    if not section:
+        return None
+    sec_name, sec_dept = parse_section_identifier(section)
+    if sec_dept:
+        return canonicalize_department_name(sec_dept)
+    target = (sec_name or section).strip().lower()
+    q_stud = db.query(models.StudentUpload.department).filter(func.lower(func.trim(models.StudentUpload.section)) == target)
+    q_att = db.query(models.StudentAttendance.department).filter(func.lower(func.trim(models.StudentAttendance.section)) == target)
+    if academic_year:
+        norm_year = normalize_academic_year(academic_year)
+        if norm_year:
+            q_stud = q_stud.filter(models.StudentUpload.academic_year == norm_year)
+            q_att = q_att.filter(models.StudentAttendance.academic_year == norm_year)
+    depts = set()
+    for row in q_stud.distinct().all() + q_att.distinct().all():
+        if row[0]:
+            canon = canonicalize_department_name(row[0])
+            if canon:
+                depts.add(canon)
+    if len(depts) == 1:
+        return next(iter(depts))
+    return None
+
+
 def _apply_scope(query, model, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None):
     """Apply the selected dashboard scope before KPI data is materialized."""
     norm_year = normalize_academic_year(academic_year)
     if norm_year and hasattr(model, "academic_year"):
-        query = query.filter(model.academic_year == norm_year)
-    canonical_department = canonicalize_department_name(department) if department else None
+        if norm_year == "2024-2025":
+            query = query.filter(model.academic_year.in_(["2024-2025", "2024-25"]))
+        elif norm_year == "2025-2026":
+            query = query.filter(model.academic_year.in_(["2025-2026", "2025-26"]))
+        else:
+            query = query.filter(model.academic_year == norm_year)
+
+    sec_name, sec_dept = parse_section_identifier(section)
+    effective_dept = department or sec_dept
+    effective_sec = sec_name if sec_name is not None else section
+
+    canonical_department = canonicalize_department_name(effective_dept) if effective_dept else None
     if canonical_department and hasattr(model, "department"):
         aliases = {
             "Computer Science and Engineering": ["computer science and engineering", "computer science engineering", "computer science & engineering", "computer science and engineering (cse)", "cse"],
             "AI & Data Science": ["ai & data science", "ai and data science", "artificial intelligence & data science", "artificial intelligence and data science", "artificial intelligence and data science (aids)", "artificial intelligence & data science (aids)", "aids"],
         }[canonical_department]
         query = query.filter(func.lower(func.trim(model.department)).in_(aliases))
-    if section and hasattr(model, "section"):
-        query = query.filter(func.lower(func.trim(model.section)) == section.strip().lower())
+    if effective_sec and hasattr(model, "section"):
+        query = query.filter(func.lower(func.trim(model.section)) == effective_sec.strip().lower())
     return query
 
 
-def get_available_sections(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None) -> List[str]:
-    student_query = _apply_scope(db.query(models.StudentUpload.section), models.StudentUpload, academic_year, department)
-    attendance_query = _apply_scope(db.query(models.StudentAttendance.section), models.StudentAttendance, academic_year, department)
-    sections = [row[0].strip() for row in student_query.distinct().all() + attendance_query.distinct().all() if row[0] and row[0].strip()]
-    return sorted(set(sections), key=str.lower)
+def get_available_sections(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None) -> List[Dict[str, str]]:
+    student_query = _apply_scope(db.query(models.StudentUpload.section, models.StudentUpload.department), models.StudentUpload, academic_year, department)
+    attendance_query = _apply_scope(db.query(models.StudentAttendance.section, models.StudentAttendance.department), models.StudentAttendance, academic_year, department)
+
+    seen = set()
+    results = []
+    for sec_val, dept_val in student_query.all() + attendance_query.all():
+        if not sec_val or not str(sec_val).strip():
+            continue
+        sec_clean = str(sec_val).strip().upper()
+        canonical_dept = canonicalize_department_name(dept_val) or (str(dept_val).strip() if dept_val else "Unknown")
+        composite_key = (sec_clean, canonical_dept)
+        if composite_key in seen:
+            continue
+        seen.add(composite_key)
+        results.append({
+            "section": sec_clean,
+            "department": canonical_dept,
+            "label": f"Section {sec_clean} ({canonical_dept})",
+            "value": f"{sec_clean}::{canonical_dept}"
+        })
+
+    results.sort(key=lambda x: (x["department"].lower(), x["section"].lower()))
+    return results
 
 
 def get_department_overview(db: Session) -> List[Dict[str, Any]]:
@@ -1250,15 +1328,21 @@ def get_laboratory_utilization_percentage(db: Session, academic_year: Optional[s
 
 def get_kpi_summary(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year)
+    sec_name, sec_dept = parse_section_identifier(section)
+    effective_dept = department or sec_dept
+    effective_sec = sec_name if sec_name is not None else section
+    if effective_sec and not effective_dept:
+        effective_dept = find_department_for_section(db, effective_sec, norm_year)
+
     return {
-        "total_students": get_student_count(db, academic_year=norm_year, department=department, section=section),
-        "total_faculty": get_total_faculty(db, department=department),
+        "total_students": get_student_count(db, academic_year=norm_year, department=effective_dept, section=effective_sec),
+        "total_faculty": get_total_faculty(db, department=effective_dept),
         "number_of_departments": get_department_count(db),
-        "student_faculty_ratio": get_student_faculty_ratio_data(db, academic_year=norm_year, department=department, section=section)["ratio"],
-        "pass_percentage": get_pass_percentage_kpi(db, academic_year=norm_year, department=department, section=section)["overall_pass_percentage"],
-        "average_student_marks": get_average_student_marks(db, academic_year=norm_year, department=department, section=section),
-        "student_attendance_percentage": get_attendance_kpi(db, academic_year=norm_year, department=department, section=section)["overall_average_attendance"],
-        "laboratory_utilization_percentage": get_laboratory_utilization_percentage(db, academic_year=norm_year, department=department, section=section)
+        "student_faculty_ratio": get_student_faculty_ratio_data(db, academic_year=norm_year, department=effective_dept, section=effective_sec)["ratio"],
+        "pass_percentage": get_pass_percentage_kpi(db, academic_year=norm_year, department=effective_dept, section=effective_sec)["overall_pass_percentage"],
+        "average_student_marks": get_average_student_marks(db, academic_year=norm_year, department=effective_dept, section=effective_sec),
+        "student_attendance_percentage": get_attendance_kpi(db, academic_year=norm_year, department=effective_dept, section=effective_sec)["overall_average_attendance"],
+        "laboratory_utilization_percentage": get_laboratory_utilization_percentage(db, academic_year=norm_year, department=effective_dept, section=effective_sec)
     }
 
 
@@ -1378,10 +1462,16 @@ def create_attendance(db: Session, att_data: Dict[str, Any]) -> models.StudentAt
 
 # Laboratory Utilization CRUD Services
 def get_all_lab_utilizations(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> List[models.LaboratoryUtilization]:
-    query = _apply_scope(db.query(models.LaboratoryUtilization), models.LaboratoryUtilization, academic_year, department)
+    sec_name, sec_dept = parse_section_identifier(section)
+    effective_dept = department or sec_dept
+    effective_sec = sec_name if sec_name is not None else section
+    if effective_sec and not effective_dept:
+        effective_dept = find_department_for_section(db, effective_sec, academic_year)
+
+    query = _apply_scope(db.query(models.LaboratoryUtilization), models.LaboratoryUtilization, academic_year, effective_dept)
     # Laboratory records do not have a section column. A selected section must
     # therefore produce no rows rather than mixing all department sections.
-    if section and section.strip():
+    if effective_sec and effective_sec.strip():
         query = query.filter(models.LaboratoryUtilization.id == -1)
     return query.all()
 

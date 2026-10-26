@@ -108,6 +108,13 @@ class DepartmentOverviewItem(BaseModel):
     facultyCount: int
 
 
+class SectionFilterOption(BaseModel):
+    section: str
+    department: str
+    label: str
+    value: str
+
+
 class AdminLoginRequest(BaseModel):
     username: str
     password: str

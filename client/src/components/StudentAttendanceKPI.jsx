@@ -166,12 +166,6 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
     }));
   }, [filteredData, DEFAULT_SUBJECTS]);
 
-  // Unique departments for filter dropdown
-  const departmentOptions = useMemo(() => {
-    const depts = new Set(attendanceData.map((d) => d.department).filter(Boolean));
-    return ['All', ...Array.from(depts)];
-  }, [attendanceData]);
-
   // Key KPI Calculations
   const metrics = useMemo(() => {
     const totalStudents = filteredData.length;
@@ -321,8 +315,8 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
               </div>
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs">
                 <Filter className="w-4 h-4 text-blue-600" />
-                <span className="text-xs font-bold text-slate-700">Dept:</span>
-                <span className="text-xs font-semibold text-slate-900">{selectedDept}{section ? ` · ${section}` : ''}</span>
+                <span className="text-xs font-bold text-slate-700">Section:</span>
+                <span className="text-xs font-semibold text-slate-900">{section ? `Section ${section}${selectedDept ? ` (${selectedDept})` : ''}` : 'All sections'}</span>
               </div>
 
               <button

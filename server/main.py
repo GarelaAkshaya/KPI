@@ -134,10 +134,13 @@ def get_student_feedback_summary(
     _: models.AdminUser = Depends(get_current_admin),
 ):
     """Return aggregate feedback only; individual submissions are not exposed."""
-    base_query = services._apply_scope(db.query(models.StudentFeedback), models.StudentFeedback, department=department)
+    sec_name, sec_dept = services.parse_section_identifier(section)
+    effective_dept = department or sec_dept
+    effective_sec = sec_name if sec_name is not None else section
+    base_query = services._apply_scope(db.query(models.StudentFeedback), models.StudentFeedback, department=effective_dept)
     norm_year = services.normalize_academic_year(academic_year)
-    selected_department = department.strip() if department and department.strip() else None
-    if section and section.strip():
+    selected_department = effective_dept.strip() if effective_dept and effective_dept.strip() else None
+    if effective_sec and effective_sec.strip():
         # Feedback records have no section field; return an empty scoped result
         # instead of accidentally mixing feedback from other sections.
         base_query = base_query.filter(models.StudentFeedback.id == -1)
@@ -339,7 +342,7 @@ def get_department_overview(db: Session = Depends(database.get_db), _: models.Ad
         )
 
 
-@app.get("/api/filters/sections", response_model=List[str])
+@app.get("/api/filters/sections", response_model=List[schemas.SectionFilterOption])
 def get_filter_sections(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,

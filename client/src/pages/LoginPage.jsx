@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, User, Lock, ArrowRight, ShieldCheck, Activity } from 'lucide-react';
-import { API_BASE_URL, setStoredAuthToken } from '../api';
+import { API_BASE_URL, apiFetch, setStoredAuthToken } from '../api';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
