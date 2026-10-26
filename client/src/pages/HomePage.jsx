@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 import DashboardCard from '../components/DashboardCard';
 import ComingSoonModal from '../components/ComingSoonModal';
 import { Users, UserCheck, Building2, LineChart, GraduationCap, Quote, ArrowUpRight, CheckCircle2 } from 'lucide-react';
-import { API_BASE_URL } from '../api';
+import { API_BASE_URL, apiFetch } from '../api';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -21,7 +21,7 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/stats`);
+        const res = await apiFetch(`${API_BASE_URL}/api/stats`);
         if (res.ok) {
           const data = await res.json();
           setStats(data);
@@ -104,15 +104,16 @@ export default function HomePage() {
       buttonBg: "bg-[#9333EA] hover:bg-[#7E22CE]",
     },
     {
-      title: "Upload Department Data",
-      description: "Configure department structures, course mappings, resource allocations, and institutional parameters.",
+      title: "Department Overview",
+      description: "Review department composition, student counts, and faculty staffing across the institution.",
       icon: Building2,
-      badgeText: "Infrastructure",
+      badgeText: "Institutional Overview",
+      targetRoute: "/departments",
       iconBg: "bg-[#10B981]/10",
       iconBorder: "border-[#10B981]/30",
       iconColor: "text-[#10B981]",
       iconShadow: "shadow-md shadow-[#10B981]/20",
-      buttonText: "Open Module",
+      buttonText: "View Overview",
       buttonBg: "bg-[#059669] hover:bg-[#047857]",
     },
     {

@@ -1,16 +1,39 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, User, Lock, ArrowRight, ShieldCheck, Activity } from 'lucide-react';
+import { API_BASE_URL, setStoredAuthToken } from '../api';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('••••••••');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Dummy login navigation as specified
-    navigate('/home');
+    setError('');
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || 'Invalid username or password.');
+      }
+
+      setStoredAuthToken(data.access_token);
+      navigate('/home');
+    } catch (err) {
+      setError(err.message || 'Unable to sign in. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -97,12 +120,19 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full group relative flex items-center justify-center gap-2 py-4 px-6 rounded-2xl text-white font-bold text-base bg-[#2563EB] hover:bg-[#3B82F6] shadow-lg shadow-blue-500/20 active:bg-[#1D4ED8] transition-all duration-300 active:scale-[0.99]"
+              disabled={isSubmitting}
+              className="w-full group relative flex items-center justify-center gap-2 py-4 px-6 rounded-2xl text-white font-bold text-base bg-[#2563EB] hover:bg-[#3B82F6] shadow-lg shadow-blue-500/20 active:bg-[#1D4ED8] transition-all duration-300 active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              <span>Login to Portal</span>
+              <span>{isSubmitting ? 'Signing in...' : 'Login to Portal'}</span>
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
             </button>
           </form>

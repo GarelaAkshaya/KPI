@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, MessageSquare, TrendingUp } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import { API_BASE_URL } from '../api';
+import { API_BASE_URL, apiFetch } from '../api';
 
 const years = ['2024-2025', '2025-2026'];
 const categories = [['teaching_quality', 'Teaching quality'], ['course_content', 'Course content'], ['learning_resources', 'Learning resources'], ['faculty_support', 'Faculty support'], ['overall_satisfaction', 'Overall satisfaction']];
@@ -20,7 +20,7 @@ export default function FeedbackDashboardPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${API_BASE_URL}/api/departments`, { signal: controller.signal }).then((r) => r.ok ? r.json() : []).then((data) => { if (Array.isArray(data)) setDepartments(data.filter((x) => x?.name).map((x) => x.name)); }).catch(() => {});
+    apiFetch(`${API_BASE_URL}/api/departments`, { signal: controller.signal }).then((r) => r.ok ? r.json() : []).then((data) => { if (Array.isArray(data)) setDepartments(data.filter((x) => x?.name).map((x) => x.name)); }).catch(() => {});
     return () => controller.abort();
   }, []);
 
@@ -30,7 +30,7 @@ export default function FeedbackDashboardPage() {
     if (year) params.set('academic_year', year);
     if (department) params.set('department', department);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/feedback/summary${params.size ? `?${params}` : ''}`, { signal });
+      const response = await apiFetch(`${API_BASE_URL}/api/feedback/summary${params.size ? `?${params}` : ''}`, { signal });
       if (!response.ok) throw new Error(`Feedback summary could not be loaded (HTTP ${response.status}).`);
       const data = await response.json();
       if (!data || typeof data !== 'object') throw new Error('The feedback service returned an invalid summary.');

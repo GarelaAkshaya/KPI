@@ -15,7 +15,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+import { API_BASE_URL, apiFetch } from '../api';
 
 const SUBJECT_DETAILS = {
   DM: { code: 'DM', name: 'Discrete Mathematics', credits: 4, icon: '📐' },
@@ -25,7 +25,7 @@ const SUBJECT_DETAILS = {
   ML: { code: 'ML', name: 'Machine Learning', credits: 4, icon: '🤖' },
 };
 
-export default function PassPercentageKPI({ academicYear = '2024-2025', onAcademicYearChange }) {
+export default function PassPercentageKPI({ academicYear = '2024-2025', department, section, onAcademicYearChange }) {
   const [internalYear, setInternalYear] = useState(academicYear);
 
   useEffect(() => {
@@ -44,8 +44,8 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', onAcadem
       setIsLoading(true);
       setError('');
       try {
-        const queryParam = activeYear ? `?academic_year=${encodeURIComponent(activeYear)}` : '';
-        const res = await fetch(`${API_BASE_URL}/api/kpis/pass-percentage${queryParam}`);
+        const queryParam = `?${new URLSearchParams({ academic_year: activeYear, ...(department ? { department } : {}), ...(section ? { section } : {}) })}`;
+        const res = await apiFetch(`${API_BASE_URL}/api/kpis/pass-percentage${queryParam}`);
         if (!res.ok) {
           throw new Error('Unable to retrieve pass percentage KPI data.');
         }
@@ -58,7 +58,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', onAcadem
       }
     }
     fetchPassPercentage();
-  }, [activeYear]);
+  }, [activeYear, department, section]);
 
   const totalEvaluated = data?.total_students_evaluated || 0;
   const overallPassed = data?.overall?.passed || 0;

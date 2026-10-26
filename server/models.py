@@ -12,6 +12,7 @@ class StudentUpload(Base):
     enrollment_number = Column(String, nullable=True, index=True)
     studentName = Column(String, nullable=False)
     department = Column(String, nullable=True, default="Artificial Intelligence and Data Science (AIDS)")
+    section = Column(String, nullable=True, default=None)
     totalMarks = Column(Integer, nullable=False)
     percentage = Column(Float, nullable=False)
     academic_year = Column(String, nullable=False, default="2024-2025", index=True)
@@ -111,6 +112,16 @@ class Department(Base):
     description = Column(String, nullable=True)
 
 
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    username = Column(String, nullable=False, unique=True, index=True)
+    password_hash = Column(String, nullable=False)
+    is_active = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class KPI(Base):
     __tablename__ = "kpis"
 
@@ -147,6 +158,7 @@ class StudentAttendance(Base):
     enrollment_number = Column(String, nullable=True, index=True)
     student_name = Column(String, nullable=False)
     department = Column(String, nullable=False)
+    section = Column(String, nullable=True, default=None)
     academic_year = Column(String, nullable=False)
     total_classes = Column(Integer, nullable=False, default=0)
     attended_classes = Column(Integer, nullable=False, default=0)

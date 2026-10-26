@@ -18,7 +18,7 @@ import {
   Info,
   RefreshCw
 } from 'lucide-react';
-import { API_BASE_URL } from '../api';
+import { API_BASE_URL, apiFetch } from '../api';
 
 const getAttendanceValue = (item) => item.average_attendance ?? item.attendance_percentage ?? 0;
 
@@ -51,7 +51,7 @@ const getSubjectLabel = (subject) => {
 
 const isNonSubjectColumn = (subject) => /^s\.?\s*no\.?$/i.test(String(subject).trim());
 
-export default function StudentAttendanceKPI({ academicYear = '2024-2025', onAcademicYearChange }) {
+export default function StudentAttendanceKPI({ academicYear = '2024-2025', department, section, onAcademicYearChange }) {
   const [internalYear, setInternalYear] = useState(academicYear);
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', onAca
   const activeYear = internalYear || academicYear;
   const [attendanceData, setAttendanceData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedDept, setSelectedDept] = useState('All');
+  const selectedDept = department || '';
   const [hoveredStudent, setHoveredStudent] = useState(null);
   const [hoveredDoughnut, setHoveredDoughnut] = useState(null);
   const [hoveredDist, setHoveredDist] = useState(null);
@@ -73,8 +73,8 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', onAca
     async function fetchAttendance() {
       setIsLoading(true);
       try {
-        const queryParam = activeYear ? `?academic_year=${encodeURIComponent(activeYear)}` : '';
-        const res = await fetch(`${API_BASE_URL}/api/attendance${queryParam}`);
+        const queryParam = `?${new URLSearchParams({ academic_year: activeYear, ...(selectedDept ? { department: selectedDept } : {}), ...(section ? { section } : {}) })}`;
+        const res = await apiFetch(`${API_BASE_URL}/api/attendance${queryParam}`);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data)) {
@@ -88,21 +88,14 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', onAca
       }
     }
     fetchAttendance();
-  }, [activeYear]);
+  }, [activeYear, selectedDept, section]);
 
   // Filter list by selected department and academic year
   const filteredData = useMemo(() => {
     return attendanceData.filter((item) => {
-      const itemYear = item.academic_year || item.academicYear;
-      if (activeYear && itemYear) {
-        const normItemYear = itemYear === '2024-25' ? '2024-2025' : itemYear === '2025-26' ? '2025-2026' : itemYear;
-        const normPropYear = activeYear === '2024-25' ? '2024-2025' : activeYear === '2025-26' ? '2025-2026' : activeYear;
-        if (normItemYear !== normPropYear) return false;
-      }
-      if (selectedDept !== 'All' && item.department !== selectedDept) return false;
-      return true;
+      return true; // The API already applies every selected scope filter.
     });
-  }, [attendanceData, selectedDept, activeYear]);
+  }, [attendanceData]);
 
   const DEFAULT_SUBJECTS = useMemo(() => [
     'Power Skills - III',
@@ -329,17 +322,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', onAca
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs">
                 <Filter className="w-4 h-4 text-blue-600" />
                 <span className="text-xs font-bold text-slate-700">Dept:</span>
-                <select
-                  value={selectedDept}
-                  onChange={(e) => setSelectedDept(e.target.value)}
-                  className="bg-transparent text-xs font-semibold text-slate-900 focus:outline-none cursor-pointer pr-2"
-                >
-                  {departmentOptions.map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept === 'All' ? 'All Departments' : dept}
-                    </option>
-                  ))}
-                </select>
+                <span className="text-xs font-semibold text-slate-900">{selectedDept}{section ? ` · ${section}` : ''}</span>
               </div>
 
               <button

@@ -1,12 +1,103 @@
+import hashlib
+import hmac
 import io
 import json
 import math
+import os
 import re
+import secrets
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Tuple, Optional
+
+from dotenv import load_dotenv
 import pandas as pd
+import jwt
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 import models
+
+load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "admin1234"
+JWT_ALGORITHM = "HS256"
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+
+def get_jwt_secret() -> str:
+    secret = os.getenv("JWT_SECRET_KEY", "").strip()
+    if not secret:
+        raise RuntimeError("JWT_SECRET_KEY is not configured. Add it to server/.env before starting the API.")
+    return secret
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 200000)
+    return f"pbkdf2_sha256$200000${salt}${digest.hex()}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        algorithm, iterations, salt, digest_hex = password_hash.split("$")
+        if algorithm != "pbkdf2_sha256":
+            return False
+        derived = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt.encode("utf-8"),
+            int(iterations),
+        )
+        return hmac.compare_digest(derived.hex(), digest_hex)
+    except (ValueError, TypeError):
+        return False
+
+
+def create_access_token(username: str) -> str:
+    payload = {
+        "sub": username,
+        "exp": datetime.utcnow() + timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
+
+
+def verify_access_token(token: str) -> str:
+    payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+    username = payload.get("sub")
+    if not username:
+        raise ValueError("Token payload missing subject")
+    return username
+
+
+def initialize_admin_account(db: Session) -> models.AdminUser:
+    username = os.getenv("ADMIN_USERNAME", DEFAULT_ADMIN_USERNAME).strip() or DEFAULT_ADMIN_USERNAME
+    password = os.getenv("ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD).strip() or DEFAULT_ADMIN_PASSWORD
+
+    admin = db.query(models.AdminUser).filter(models.AdminUser.username == username).first()
+    if admin is not None:
+        if not admin.password_hash:
+            admin.password_hash = hash_password(password)
+            db.commit()
+        return admin
+
+    user = models.AdminUser(username=username, password_hash=hash_password(password), is_active=1)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def authenticate_admin(db: Session, username: str, password: str) -> Optional[models.AdminUser]:
+    stored_user = db.query(models.AdminUser).filter(
+        models.AdminUser.username == username,
+        models.AdminUser.is_active == 1,
+    ).first()
+    if stored_user is None:
+        return None
+    if not verify_password(password, stored_user.password_hash):
+        return None
+    return stored_user
 
 
 def parse_percentage_value(value: Any) -> Optional[float]:
@@ -47,11 +138,19 @@ def normalize_academic_year(year: Optional[str]) -> Optional[str]:
     raise ValueError(f"Invalid Academic Year '{year}'. Allowed years are '2024-2025' and '2025-2026'.")
 
 
-def normalize_student_rows(raw_rows: Any, academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool]:
+def normalize_student_rows(
+    raw_rows: Any,
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], bool]:
     if isinstance(raw_rows, pd.DataFrame):
         raw_rows = raw_rows.to_dict(orient="records")
     if not raw_rows:
         return [], False
+
+    form_department = (department or "").strip()
+    form_section = (section or "").strip()
 
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
     if norm_year not in {"2024-2025", "2025-2026"}:
@@ -94,6 +193,7 @@ def normalize_student_rows(raw_rows: Any, academic_year: Optional[str] = None) -
         enrollment_keys = ["enrollment number", "enrollment no", "enrollment", "student id", "studentid", "roll no", "roll number", "rollno", "id"]
         name_keys = ["student name", "studentname", "name of student", "name", "student"]
         dept_keys = ["department", "dept", "branch", "stream"]
+        section_keys = ["section", "batch section", "sec", "section name"]
         year_keys = ["academic year", "academicyear", "academic_year", "year", "session"]
 
         normalized_records = []
@@ -136,9 +236,19 @@ def normalize_student_rows(raw_rows: Any, academic_year: Optional[str] = None) -
                 if dk in row_map and not _is_missing(row_map[dk][1]):
                     dept_val = str(row_map[dk][1]).strip()
                     break
-            department = dept_val or "Artificial Intelligence and Data Science (AIDS)"
+            department_name = dept_val or form_department or "Artificial Intelligence and Data Science (AIDS)"
 
-            # 4. Academic Year
+            # 4. Section
+            section_val = None
+            for sk in section_keys:
+                if sk in row_map and not _is_missing(row_map[sk][1]):
+                    section_val = str(row_map[sk][1]).strip()
+                    break
+            section_name = section_val or form_section
+            if not section_name:
+                raise ValueError(f"Row {row_idx}: Section is missing. Please provide a section value or enter the section in the upload form.")
+
+            # 5. Academic Year
             file_year_val = None
             for yk in year_keys:
                 if yk in row_map and not _is_missing(row_map[yk][1]):
@@ -193,7 +303,8 @@ def normalize_student_rows(raw_rows: Any, academic_year: Optional[str] = None) -
                 "studentId": enrollment_number,
                 "enrollment_number": enrollment_number,
                 "studentName": student_name,
-                "department": department,
+                "department": department_name,
+                "section": section_name.upper() if section_name else None,
                 "totalMarks": total_marks,
                 "percentage": percentage,
                 "academic_year": norm_year,
@@ -273,7 +384,8 @@ def normalize_student_rows(raw_rows: Any, academic_year: Optional[str] = None) -
             "studentId": student_id,
             "enrollment_number": student_id,
             "studentName": student_name,
-            "department": "Artificial Intelligence and Data Science (AIDS)",
+            "department": form_department or "Artificial Intelligence and Data Science (AIDS)",
+            "section": (form_section or "").upper() if form_section else None,
             "totalMarks": total_marks,
             "percentage": percentage,
             "academic_year": norm_year,
@@ -304,7 +416,13 @@ def _attendance_subject_value(value: Any) -> Optional[float]:
         return None
     return round(parsed, 2)
 
-def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None, academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
+def normalize_attendance_rows(
+    raw_rows: Any,
+    headers: Optional[List[str]] = None,
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
     if isinstance(raw_rows, pd.DataFrame):
         if headers is None:
             headers = [str(c) for c in raw_rows.columns]
@@ -330,6 +448,9 @@ def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None
         "PHYSICS": ["physics", "phy"],
     }
 
+    form_department = (department or "").strip() if department is not None else ""
+    form_section = (section or "").strip() if section is not None else ""
+
     sample_keys = {str(k).strip().lower(): k for k in headers}
     has_all_five_attendance_subjects = all(
         any(alias in sample_keys for alias in aliases)
@@ -344,6 +465,8 @@ def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None
 
         enrollment_keys = ["enrollment number", "enrollment no", "enrollment", "student id", "studentid", "roll no", "roll number", "rollno", "id"]
         name_keys = ["student name", "studentname", "name of student", "name", "student"]
+        dept_keys = ["department", "dept", "branch", "stream"]
+        section_keys = ["section", "batch section", "sec", "section name"]
         year_keys = ["academic year", "academicyear", "academic_year", "year", "session"]
         subject_headers = ["DS", "EG", "EVS", "HC", "PHYSICS"]
 
@@ -381,7 +504,25 @@ def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None
                 raise ValueError(f"Row {row_idx}: Student Name is missing.")
             student_name = name_val
 
-            # 3. Academic Year
+            # 3. Department
+            dept_val = None
+            for dk in dept_keys:
+                if dk in row_map and not _is_missing(row_map[dk][1]):
+                    dept_val = str(row_map[dk][1]).strip()
+                    break
+            department_name = dept_val or form_department or "Artificial Intelligence and Data Science (AIDS)"
+
+            # 4. Section
+            section_val = None
+            for sk in section_keys:
+                if sk in row_map and not _is_missing(row_map[sk][1]):
+                    section_val = str(row_map[sk][1]).strip()
+                    break
+            section_name = section_val or form_section
+            if not section_name:
+                raise ValueError(f"Row {row_idx}: Section is missing. Please provide a section value or enter it in the upload form.")
+
+            # 5. Academic Year
             file_year_val = None
             for yk in year_keys:
                 if yk in row_map and not _is_missing(row_map[yk][1]):
@@ -434,7 +575,8 @@ def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None
                 "student_id": enrollment_number,
                 "enrollment_number": enrollment_number,
                 "student_name": student_name,
-                "department": "Artificial Intelligence and Data Science (AIDS)",
+                "department": department_name,
+                "section": section_name.upper() if section_name else None,
                 "academic_year": norm_year,
                 "total_classes": total_classes,
                 "attended_classes": attended_classes,
@@ -525,7 +667,8 @@ def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None
                 'student_id': student_id,
                 'enrollment_number': student_id,
                 'student_name': student_name,
-                'department': 'Artificial Intelligence and Data Science (AIDS)',
+                'department': form_department or 'Artificial Intelligence and Data Science (AIDS)',
+                'section': (form_section or '').upper() if form_section else None,
                 'academic_year': norm_year,
                 'total_classes': len(subject_values) * 100,
                 'attended_classes': int(round(sum(subject_values.values()))),
@@ -565,7 +708,8 @@ def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None
             "student_id": student_id,
             "enrollment_number": student_id,
             "student_name": student_name,
-            "department": "Artificial Intelligence and Data Science (AIDS)",
+            "department": form_department or "Artificial Intelligence and Data Science (AIDS)",
+            "section": (form_section or '').upper() if form_section else None,
             "academic_year": norm_year,
             "total_classes": 100,
             "attended_classes": int(round(percentage)),
@@ -578,7 +722,13 @@ def normalize_attendance_rows(raw_rows: Any, headers: Optional[List[str]] = None
     return normalized_records, has_invalid_row, subject_headers
 
 
-def parse_attendance_excel_file(file_contents: bytes, filename: str = '', academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
+def parse_attendance_excel_file(
+    file_contents: bytes,
+    filename: str = '',
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
     if filename.lower().endswith('.csv'):
         df = pd.read_csv(io.BytesIO(file_contents))
     else:
@@ -589,7 +739,7 @@ def parse_attendance_excel_file(file_contents: bytes, filename: str = '', academ
     headers = [_clean_header(header) for header in df.columns]
     df.columns = headers
     rows = df.to_dict(orient='records')
-    return normalize_attendance_rows(rows, headers, academic_year=academic_year)
+    return normalize_attendance_rows(rows, headers, academic_year=academic_year, department=department, section=section)
 
 
 def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None) -> int:
@@ -603,10 +753,14 @@ def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic
         subjs_json = json.dumps(r.get('subjects', []))
         subj_vals_json = json.dumps(r.get('subject_values', {}))
         year = norm_year or r.get('academic_year', '2024-2025')
+        section_value = r.get('section')
+        if section_value is not None:
+            section_value = str(section_value).strip().upper() or None
         if enrollment in existing_attendance:
             att = existing_attendance[enrollment]
             att.student_name = r['student_name']
             att.department = r.get('department', att.department)
+            att.section = section_value or att.section
             att.academic_year = year
             att.total_classes = r['total_classes']
             att.attended_classes = r['attended_classes']
@@ -620,6 +774,7 @@ def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic
                 enrollment_number=r.get('enrollment_number', r['student_id']),
                 student_name=r['student_name'],
                 department=r.get('department', 'Artificial Intelligence and Data Science (AIDS)'),
+                section=section_value,
                 academic_year=year,
                 total_classes=r['total_classes'],
                 attended_classes=r['attended_classes'],
@@ -669,13 +824,20 @@ def match_attendance_students(db: Session, records: List[Dict[str, Any]], academ
         record['student_id'] = canonical_id
         record['enrollment_number'] = canonical_id
         record['student_name'] = student.studentName
+        record['department'] = record.get('department') or getattr(student, 'department', '') or 'Artificial Intelligence and Data Science (AIDS)'
+        record['section'] = record.get('section') or getattr(student, 'section', '') or None
         record['academic_year'] = norm_year
         matched_records.append(record)
 
     return matched_records, unmatched
 
 
-def parse_excel_file(file_contents: bytes, academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], bool]:
+def parse_excel_file(
+    file_contents: bytes,
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], bool]:
     df = pd.read_excel(io.BytesIO(file_contents))
     df = df.where(pd.notnull(df), None)
     if df.empty or len(df.columns) == 0:
@@ -683,7 +845,7 @@ def parse_excel_file(file_contents: bytes, academic_year: Optional[str] = None) 
     headers = [_clean_header(header) for header in df.columns]
     df.columns = headers
     rows = df.to_dict(orient='records')
-    return normalize_student_rows(rows, academic_year=academic_year)
+    return normalize_student_rows(rows, academic_year=academic_year, department=department, section=section)
 
 
 def save_student_records(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None) -> int:
@@ -703,11 +865,15 @@ def save_student_records(db: Session, records: List[Dict[str, Any]], academic_ye
         enum_key = enum.casefold()
         existing = existing_students.get(key) or existing_students.get(enum_key)
         year = norm_year or r.get('academic_year') or "2024-2025"
+        section_value = r.get('section')
+        if section_value is not None:
+            section_value = str(section_value).strip().upper() or None
 
         if existing:
             existing.studentName = r['studentName']
             existing.enrollment_number = enum
             existing.department = r.get('department') or existing.department
+            existing.section = section_value or existing.section
             existing.totalMarks = r['totalMarks']
             existing.percentage = r['percentage']
             existing.academic_year = year
@@ -729,6 +895,7 @@ def save_student_records(db: Session, records: List[Dict[str, Any]], academic_ye
                 enrollment_number=enum,
                 studentName=r['studentName'],
                 department=r.get('department', 'Artificial Intelligence and Data Science (AIDS)'),
+                section=section_value,
                 totalMarks=r['totalMarks'],
                 percentage=r['percentage'],
                 academic_year=year,
@@ -747,30 +914,24 @@ def save_student_records(db: Session, records: List[Dict[str, Any]], academic_ye
     return saved_count
 
 
-def get_all_students(db: Session, academic_year: Optional[str] = None) -> List[models.StudentUpload]:
-    query = db.query(models.StudentUpload)
-    norm_year = normalize_academic_year(academic_year)
-    if norm_year:
-        query = query.filter(models.StudentUpload.academic_year == norm_year)
+def get_all_students(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> List[models.StudentUpload]:
+    query = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, academic_year, department, section)
     return query.order_by(models.StudentUpload.id.desc()).all()
 
 
-def get_student_count(db: Session, academic_year: Optional[str] = None) -> int:
-    query = db.query(models.StudentUpload)
-    norm_year = normalize_academic_year(academic_year)
-    if norm_year:
-        query = query.filter(models.StudentUpload.academic_year == norm_year)
+def get_student_count(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> int:
+    query = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, academic_year, department, section)
     return query.count()
 
 
-def get_total_faculty(db: Session) -> int:
-    return db.query(models.Faculty).count()
+def get_total_faculty(db: Session, department: Optional[str] = None) -> int:
+    return _apply_scope(db.query(models.Faculty), models.Faculty, department=department).count()
 
 
-def get_student_faculty_ratio_data(db: Session, academic_year: Optional[str] = None) -> Dict[str, Any]:
+def get_student_faculty_ratio_data(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year)
-    total_students = get_student_count(db, academic_year=norm_year)
-    total_faculty = db.query(models.Faculty).count()
+    total_students = get_student_count(db, academic_year=norm_year, department=department, section=section)
+    total_faculty = get_total_faculty(db, department=department)
     if total_faculty == 0:
         return {
             "totalStudents": total_students,
@@ -817,21 +978,119 @@ def get_student_faculty_ratio_trend(db: Session) -> Dict[str, Any]:
 
 
 def get_department_count(db: Session) -> int:
-    dept_table_count = db.query(models.Department).count()
-    if dept_table_count > 0:
-        return dept_table_count
-    
-    # Fallback to distinct departments across existing tables
-    faculty_depts = db.query(distinct(models.Faculty.department)).all()
-    lab_depts = db.query(distinct(models.LaboratoryUtilization.department)).all()
-    attendance_depts = db.query(distinct(models.StudentAttendance.department)).all()
-    
-    all_depts = set(
-        [d[0] for d in faculty_depts if d[0]] +
-        [d[0] for d in lab_depts if d[0]] +
-        [d[0] for d in attendance_depts if d[0]]
-    )
-    return len(all_depts) if len(all_depts) > 0 else 0
+    # The dashboard is scoped to the two configured departments; legacy rows
+    # and duplicate aliases must not inflate the institutional count.
+    return 2
+
+
+def _normalize_department_key(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    text = text.replace("&", " and ")
+    text = re.sub(r"[^a-z0-9]+", " ", text.lower())
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def canonicalize_department_name(value: Optional[str]) -> Optional[str]:
+    key = _normalize_department_key(value)
+    if not key:
+        return None
+
+    cse_aliases = {
+        "computer science and engineering",
+        "computer science engineering",
+        "computer science and engineering cse",
+        "cse",
+    }
+    ai_aliases = {
+        "ai and data science",
+        "ai data science",
+        "artificial intelligence and data science",
+        "artificial intelligence and data science aids",
+        "artificial intelligence data science",
+        "aids",
+        "data science and artificial intelligence",
+    }
+
+    if key in cse_aliases:
+        return "Computer Science and Engineering"
+    if key in ai_aliases:
+        return "AI & Data Science"
+
+    if key.startswith("computer science") and "engineering" in key:
+        return "Computer Science and Engineering"
+    if key.startswith("artificial intelligence") or key.startswith("ai and") or key.startswith("ai data") or key.startswith("data science and artificial intelligence"):
+        return "AI & Data Science"
+    if "aids" in key and ("artificial intelligence" in key or "data science" in key or "ai" in key):
+        return "AI & Data Science"
+
+    return None
+
+
+def _apply_scope(query, model, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None):
+    """Apply the selected dashboard scope before KPI data is materialized."""
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year and hasattr(model, "academic_year"):
+        query = query.filter(model.academic_year == norm_year)
+    canonical_department = canonicalize_department_name(department) if department else None
+    if canonical_department and hasattr(model, "department"):
+        aliases = {
+            "Computer Science and Engineering": ["computer science and engineering", "computer science engineering", "computer science & engineering", "computer science and engineering (cse)", "cse"],
+            "AI & Data Science": ["ai & data science", "ai and data science", "artificial intelligence & data science", "artificial intelligence and data science", "artificial intelligence and data science (aids)", "artificial intelligence & data science (aids)", "aids"],
+        }[canonical_department]
+        query = query.filter(func.lower(func.trim(model.department)).in_(aliases))
+    if section and hasattr(model, "section"):
+        query = query.filter(func.lower(func.trim(model.section)) == section.strip().lower())
+    return query
+
+
+def get_available_sections(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None) -> List[str]:
+    student_query = _apply_scope(db.query(models.StudentUpload.section), models.StudentUpload, academic_year, department)
+    attendance_query = _apply_scope(db.query(models.StudentAttendance.section), models.StudentAttendance, academic_year, department)
+    sections = [row[0].strip() for row in student_query.distinct().all() + attendance_query.distinct().all() if row[0] and row[0].strip()]
+    return sorted(set(sections), key=str.lower)
+
+
+def get_department_overview(db: Session) -> List[Dict[str, Any]]:
+    target_departments = [
+        "Computer Science and Engineering",
+        "AI & Data Science",
+    ]
+
+    student_sets = {name: set() for name in target_departments}
+    faculty_sets = {name: set() for name in target_departments}
+
+    for student in db.query(models.StudentUpload).all():
+        normalized = canonicalize_department_name(student.department)
+        if normalized not in student_sets:
+            continue
+
+        unique_key = (student.studentId or student.enrollment_number or str(student.id) or "").strip()
+        if not unique_key:
+            continue
+        student_sets[normalized].add(unique_key.lower())
+
+    for faculty in db.query(models.Faculty).all():
+        normalized = canonicalize_department_name(faculty.department)
+        if normalized not in faculty_sets:
+            continue
+
+        unique_key = (faculty.faculty_id or str(faculty.id) or "").strip()
+        if not unique_key:
+            continue
+        faculty_sets[normalized].add(unique_key.lower())
+
+    return [
+        {
+            "name": name,
+            "studentCount": len(student_sets[name]),
+            "facultyCount": len(faculty_sets[name]),
+        }
+        for name in target_departments
+    ]
 
 
 def get_student_faculty_ratio(db: Session, academic_year: Optional[str] = None) -> float:
@@ -842,9 +1101,9 @@ def get_student_faculty_ratio(db: Session, academic_year: Optional[str] = None) 
     return round(total_students / float(total_faculty), 2)
 
 
-def get_pass_percentage_kpi(db: Session, academic_year: Optional[str] = "2024-2025") -> Dict[str, Any]:
+def get_pass_percentage_kpi(db: Session, academic_year: Optional[str] = "2024-2025", department: Optional[str] = None, section: Optional[str] = None) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
-    all_students = db.query(models.StudentUpload).filter(models.StudentUpload.academic_year == norm_year).all()
+    all_students = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, norm_year, department, section).all()
     
     # Exclude incomplete or invalid marks records from the pass percentage denominator
     evaluated_students = [s for s in all_students if s.has_all_five_subjects]
@@ -949,11 +1208,8 @@ def get_pass_percentage(db: Session, academic_year: Optional[str] = None) -> flo
     return round((passed / float(total_students)) * 100.0, 2)
 
 
-def get_average_student_marks(db: Session, academic_year: Optional[str] = None) -> float:
-    query = db.query(func.avg(models.StudentUpload.totalMarks))
-    norm_year = normalize_academic_year(academic_year)
-    if norm_year:
-        query = query.filter(models.StudentUpload.academic_year == norm_year)
+def get_average_student_marks(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> float:
+    query = _apply_scope(db.query(func.avg(models.StudentUpload.totalMarks)), models.StudentUpload, academic_year, department, section)
     avg_marks = query.scalar()
     return round(float(avg_marks), 2) if avg_marks is not None else 0.0
 
@@ -979,8 +1235,8 @@ def get_student_attendance_percentage(db: Session, academic_year: Optional[str] 
     return 0.0
 
 
-def get_laboratory_utilization_percentage(db: Session) -> float:
-    labs = db.query(models.LaboratoryUtilization).all()
+def get_laboratory_utilization_percentage(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> float:
+    labs = get_all_lab_utilizations(db, academic_year=academic_year, department=department, section=section)
     if not labs:
         return 0.0
     utilizations = []
@@ -992,17 +1248,17 @@ def get_laboratory_utilization_percentage(db: Session) -> float:
     return round(sum(utilizations) / len(utilizations), 2)
 
 
-def get_kpi_summary(db: Session, academic_year: Optional[str] = None) -> Dict[str, Any]:
+def get_kpi_summary(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year)
     return {
-        "total_students": get_student_count(db, academic_year=norm_year),
-        "total_faculty": get_total_faculty(db),
+        "total_students": get_student_count(db, academic_year=norm_year, department=department, section=section),
+        "total_faculty": get_total_faculty(db, department=department),
         "number_of_departments": get_department_count(db),
-        "student_faculty_ratio": get_student_faculty_ratio(db, academic_year=norm_year),
-        "pass_percentage": get_pass_percentage(db, academic_year=norm_year),
-        "average_student_marks": get_average_student_marks(db, academic_year=norm_year),
-        "student_attendance_percentage": get_student_attendance_percentage(db, academic_year=norm_year),
-        "laboratory_utilization_percentage": get_laboratory_utilization_percentage(db)
+        "student_faculty_ratio": get_student_faculty_ratio_data(db, academic_year=norm_year, department=department, section=section)["ratio"],
+        "pass_percentage": get_pass_percentage_kpi(db, academic_year=norm_year, department=department, section=section)["overall_pass_percentage"],
+        "average_student_marks": get_average_student_marks(db, academic_year=norm_year, department=department, section=section),
+        "student_attendance_percentage": get_attendance_kpi(db, academic_year=norm_year, department=department, section=section)["overall_average_attendance"],
+        "laboratory_utilization_percentage": get_laboratory_utilization_percentage(db, academic_year=norm_year, department=department, section=section)
     }
 
 
@@ -1046,11 +1302,8 @@ def create_kpi(db: Session, kpi_data: Dict[str, Any]) -> models.KPI:
 
 
 # Student Attendance CRUD Services
-def get_all_attendance(db: Session, academic_year: Optional[str] = None) -> List[models.StudentAttendance]:
-    query = db.query(models.StudentAttendance)
-    norm_year = normalize_academic_year(academic_year)
-    if norm_year:
-        query = query.filter(models.StudentAttendance.academic_year == norm_year)
+def get_all_attendance(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> List[models.StudentAttendance]:
+    query = _apply_scope(db.query(models.StudentAttendance), models.StudentAttendance, academic_year, department, section)
     records = query.order_by(models.StudentAttendance.id.asc()).all()
     default_subjects = [
         "Power Skills - III",
@@ -1084,27 +1337,24 @@ def get_all_attendance(db: Session, academic_year: Optional[str] = None) -> List
     return records
 
 
-def get_attendance_subjects(db: Session, academic_year: Optional[str] = None) -> List[str]:
-    query = db.query(models.StudentAttendance.subjects_json)
-    norm_year = normalize_academic_year(academic_year)
-    if norm_year:
-        query = query.filter(models.StudentAttendance.academic_year == norm_year)
+def get_attendance_subjects(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> List[str]:
+    query = _apply_scope(db.query(models.StudentAttendance.subjects_json), models.StudentAttendance, academic_year, department, section)
     rows = query.order_by(models.StudentAttendance.id.desc()).first()
     if not rows or not rows[0]:
         return []
     return json.loads(rows[0])
 
 
-def get_attendance_kpi(db: Session, academic_year: Optional[str] = None) -> Dict[str, Any]:
+def get_attendance_kpi(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year)
-    records = get_all_attendance(db, academic_year=norm_year)
+    records = get_all_attendance(db, academic_year=norm_year, department=department, section=section)
     values = [record.average_attendance for record in records]
     return {
         'total_students': len(records),
         'overall_average_attendance': round(sum(values) / len(values), 2) if values else 0.0,
         'highest_attendance': max(values) if values else 0.0,
         'lowest_attendance': min(values) if values else 0.0,
-        'subjects': get_attendance_subjects(db, academic_year=norm_year),
+        'subjects': get_attendance_subjects(db, academic_year=norm_year, department=department, section=section),
         'academic_year': norm_year,
     }
 
@@ -1127,8 +1377,13 @@ def create_attendance(db: Session, att_data: Dict[str, Any]) -> models.StudentAt
 
 
 # Laboratory Utilization CRUD Services
-def get_all_lab_utilizations(db: Session) -> List[models.LaboratoryUtilization]:
-    return db.query(models.LaboratoryUtilization).all()
+def get_all_lab_utilizations(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> List[models.LaboratoryUtilization]:
+    query = _apply_scope(db.query(models.LaboratoryUtilization), models.LaboratoryUtilization, academic_year, department)
+    # Laboratory records do not have a section column. A selected section must
+    # therefore produce no rows rather than mixing all department sections.
+    if section and section.strip():
+        query = query.filter(models.LaboratoryUtilization.id == -1)
+    return query.all()
 
 
 def create_lab_utilization(db: Session, lab_data: Dict[str, Any]) -> models.LaboratoryUtilization:

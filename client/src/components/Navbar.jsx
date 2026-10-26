@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck, BarChart3, Home, LogOut, GraduationCap, Search, Bell, User, MessageSquare } from 'lucide-react';
+import { ShieldCheck, BarChart3, Home, LogOut, GraduationCap, Search, Bell, User, MessageSquare, Building2 } from 'lucide-react';
 
 export default function Navbar() {
   const location = useLocation();
@@ -62,6 +62,18 @@ export default function Navbar() {
               >
                 <Home className="w-4 h-4" />
                 <span>Home</span>
+              </Link>
+
+              <Link
+                to="/departments"
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                  location.pathname.startsWith('/departments')
+                    ? 'bg-[#2563EB] text-white shadow-md shadow-blue-500/20'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                <span>Departments</span>
               </Link>
 
               <Link

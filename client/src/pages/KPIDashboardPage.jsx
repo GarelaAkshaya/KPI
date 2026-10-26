@@ -5,12 +5,16 @@ import PassPercentageKPI from '../components/PassPercentageKPI';
 import StudentFeedbackKPI from '../components/StudentFeedbackKPI';
 import { useLocation } from 'react-router-dom';
 import { BarChart3, Calendar, Filter, AreaChart, PieChart, Layers, ArrowUpRight, Info, Users, UserRound, Database, FileText, Settings, Bell, Home, Upload, SlidersHorizontal } from 'lucide-react';
-import { API_BASE_URL } from '../api';
+import { API_BASE_URL, apiFetch } from '../api';
 
 export default function KPIDashboardPage() {
   const location = useLocation();
   const [selectedKPI, setSelectedKPI] = useState(location.state?.selectedKPI || 'Student Attendance');
   const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
+  const [selectedDepartment, setSelectedDepartment] = useState('Computer Science and Engineering');
+  const [selectedSection, setSelectedSection] = useState('');
+  const [sectionOptions, setSectionOptions] = useState([]);
+  const [laboratoryUtilizationRows, setLaboratoryUtilizationRows] = useState([]);
   const [ratioData, setRatioData] = useState(null);
   const [ratioTrend, setRatioTrend] = useState([]);
   const [ratioDistribution, setRatioDistribution] = useState([]);
@@ -28,8 +32,8 @@ export default function KPIDashboardPage() {
     setRatioError('');
 
     Promise.all([
-      fetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio?academic_year=${encodeURIComponent(selectedAcademicYear)}`, { signal: controller.signal }),
-      fetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio/trend`, { signal: controller.signal }),
+      apiFetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio?${new URLSearchParams({ academic_year: selectedAcademicYear, department: selectedDepartment, ...(selectedSection ? { section: selectedSection } : {}) })}`, { signal: controller.signal }),
+      apiFetch(`${API_BASE_URL}/api/kpis/student-faculty-ratio/trend`, { signal: controller.signal }),
     ])
       .then(async ([ratioResponse, trendResponse]) => {
         if (!ratioResponse.ok || !trendResponse.ok) throw new Error('Unable to load Student-Faculty Ratio data.');
@@ -50,7 +54,37 @@ export default function KPIDashboardPage() {
       });
 
     return () => controller.abort();
-  }, [selectedKPI, selectedAcademicYear]);
+  }, [selectedKPI, selectedAcademicYear, selectedDepartment, selectedSection]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    apiFetch(`${API_BASE_URL}/api/filters/sections?${new URLSearchParams({ academic_year: selectedAcademicYear, department: selectedDepartment })}`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : [])
+      .then((sections) => {
+        const next = Array.isArray(sections) ? sections : [];
+        setSectionOptions(next);
+        if (selectedSection && !next.includes(selectedSection)) setSelectedSection('');
+      })
+      .catch(() => setSectionOptions([]));
+    return () => controller.abort();
+  }, [selectedAcademicYear, selectedDepartment, selectedSection]);
+
+  useEffect(() => {
+    if (selectedKPI !== 'Laboratory Utilization') return undefined;
+    const controller = new AbortController();
+    apiFetch(`${API_BASE_URL}/api/lab-utilization?${new URLSearchParams({ academic_year: selectedAcademicYear, department: selectedDepartment, ...(selectedSection ? { section: selectedSection } : {}) })}`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : [])
+      .then((rows) => setLaboratoryUtilizationRows((Array.isArray(rows) ? rows : []).map((row) => ({
+        laboratoryName: row.laboratory_name,
+        department: row.department,
+        sessionDate: row.session_date,
+        capacity: row.capacity,
+        studentsPresent: row.students_present,
+        utilization: utilizationPercentage(row.capacity, row.students_present),
+      }))))
+      .catch(() => setLaboratoryUtilizationRows([]));
+    return () => controller.abort();
+  }, [selectedKPI, selectedAcademicYear, selectedDepartment, selectedSection]);
 
   const exportRatioReport = () => {
     if (!ratioData) return;
@@ -81,32 +115,15 @@ export default function KPIDashboardPage() {
     '2025-2026',
   ];
 
-  const laboratoryUtilizationData = [
-    { laboratoryName: 'LART', department: 'Computer Science & Engineering', sessionDate: '2024-09-01', capacity: 45, studentsPresent: 41 },
-    { laboratoryName: 'LLOCK', department: 'Electronics & Communication Engineering', sessionDate: '2024-09-02', capacity: 40, studentsPresent: 38 },
-    { laboratoryName: 'LIVIA', department: 'Computer Science & Engineering', sessionDate: '2024-09-03', capacity: 50, studentsPresent: 47 },
-    { laboratoryName: 'VLSI', department: 'Electronics & Communication Engineering', sessionDate: '2024-09-04', capacity: 35, studentsPresent: 32 },
-    { laboratoryName: 'R-111', department: 'Electrical & Electronics Engineering', sessionDate: '2024-09-05', capacity: 42, studentsPresent: 39 },
-    { laboratoryName: 'DF LAB', department: 'Computer Science & Engineering', sessionDate: '2024-09-06', capacity: 38, studentsPresent: 35 },
-    { laboratoryName: 'PHY LAB', department: 'Physics', sessionDate: '2024-09-07', capacity: 40, studentsPresent: 36 },
-    { laboratoryName: 'CHEM LAB', department: 'Chemistry', sessionDate: '2024-09-08', capacity: 35, studentsPresent: 31 },
-    { laboratoryName: 'BE LAB', department: 'Mechanical Engineering', sessionDate: '2024-09-09', capacity: 30, studentsPresent: 27 },
-  ];
-
   const utilizationPercentage = (capacity, studentsPresent) => {
     if (!capacity || !studentsPresent) return 0;
     return Math.round((studentsPresent / capacity) * 100);
   };
 
-  const laboratoryUtilizationRows = laboratoryUtilizationData.map((row) => ({
-    ...row,
-    utilization: utilizationPercentage(row.capacity, row.studentsPresent),
-  }));
-
   const laboratoryUtilizationSummary = {
     totalLaboratories: new Set(laboratoryUtilizationRows.map((row) => row.laboratoryName)).size,
     sessionsConducted: laboratoryUtilizationRows.length,
-    averageUtilization: Math.round(laboratoryUtilizationRows.reduce((sum, row) => sum + row.utilization, 0) / laboratoryUtilizationRows.length),
+    averageUtilization: laboratoryUtilizationRows.length ? Math.round(laboratoryUtilizationRows.reduce((sum, row) => sum + row.utilization, 0) / laboratoryUtilizationRows.length) : 0,
     highestUtilizedLaboratory: laboratoryUtilizationRows.reduce((max, row) => (row.utilization > max.utilization ? row : max), laboratoryUtilizationRows[0]),
   };
 
@@ -185,7 +202,7 @@ export default function KPIDashboardPage() {
               <div className="text-xs">
                 <p className="text-[#64748B] font-medium">Current View Filter</p>
                 <p className="font-bold text-[#1E293B]">
-                  {selectedKPI} <span className="text-[#2563EB]">({selectedAcademicYear})</span>
+                  {selectedKPI} <span className="text-[#2563EB]">({selectedAcademicYear} · {selectedDepartment}{selectedSection ? ` · ${selectedSection}` : ''})</span>
                 </p>
               </div>
             </div>
@@ -197,10 +214,10 @@ export default function KPIDashboardPage() {
           <div className="bg-[#FFFFFF] border border-[#E2E8F0] rounded-3xl p-6 sm:p-8 shadow-sm">
             <h2 className="text-base font-bold text-[#1E293B] mb-4 flex items-center gap-2">
               <Layers className="w-4 h-4 text-[#2563EB]" />
-              <span>Select Indicator & Academic Session</span>
+              <span>Select Indicator & Data Scope</span>
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
               
               {/* Dropdown 1: KPI */}
               <div className="space-y-2">
@@ -227,6 +244,22 @@ export default function KPIDashboardPage() {
                     </svg>
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="department-select" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B]">Department</label>
+                <select id="department-select" value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3.5 text-[#1E293B] text-sm font-semibold">
+                  <option>Computer Science and Engineering</option>
+                  <option>AI &amp; Data Science</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="section-select" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B]">Section</label>
+                <select id="section-select" value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)} className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3.5 text-[#1E293B] text-sm font-semibold">
+                  <option value="">All sections</option>
+                  {sectionOptions.map((section) => <option key={section} value={section}>{section}</option>)}
+                </select>
               </div>
 
               {/* Dropdown 2: Academic Year */}
@@ -266,11 +299,15 @@ export default function KPIDashboardPage() {
           {selectedKPI === 'Student Attendance' ? (
             <StudentAttendanceKPI
               academicYear={selectedAcademicYear}
+              department={selectedDepartment}
+              section={selectedSection}
               onAcademicYearChange={setSelectedAcademicYear}
             />
           ) : selectedKPI === 'Pass Percentage' ? (
             <PassPercentageKPI
               academicYear={selectedAcademicYear}
+              department={selectedDepartment}
+              section={selectedSection}
               onAcademicYearChange={setSelectedAcademicYear}
             />
           ) : selectedKPI === 'Student-Faculty Ratio' ? (
@@ -418,7 +455,13 @@ export default function KPIDashboardPage() {
                   ))}
                 </div>
 
-                <div className="rounded-3xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 sm:p-6">
+                {laboratoryUtilizationRows.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-6 py-12 text-center text-sm text-[#64748B]">
+                    No laboratory-utilization records match {selectedAcademicYear}, {selectedDepartment}{selectedSection ? `, section ${selectedSection}` : ''}.
+                  </div>
+                )}
+
+                {laboratoryUtilizationRows.length > 0 && <div className="rounded-3xl border border-[#E2E8F0] bg-[#FFFFFF] p-4 sm:p-6">
                   <div className="mb-4">
                     <h4 className="text-lg font-bold text-[#1E293B]">Utilization by Laboratory</h4>
                     <p className="text-sm text-[#64748B] mt-1">Responsive comparison of laboratory occupancy levels.</p>
@@ -447,9 +490,9 @@ export default function KPIDashboardPage() {
                       })}
                     </svg>
                   </div>
-                </div>
+                </div>}
 
-                <div className="rounded-3xl border border-[#E2E8F0] bg-[#F8FAFC] overflow-hidden">
+                {laboratoryUtilizationRows.length > 0 && <div className="rounded-3xl border border-[#E2E8F0] bg-[#F8FAFC] overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                       <thead className="bg-[#EFF6FF]">
@@ -476,11 +519,11 @@ export default function KPIDashboardPage() {
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </div>}
               </div>
             </div>
           ) : selectedKPI === 'Student Feedback Improvement' ? (
-            <StudentFeedbackKPI academicYear={selectedAcademicYear} />
+            <StudentFeedbackKPI academicYear={selectedAcademicYear} department={selectedDepartment} section={selectedSection} />
           ) : (
             <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-3xl p-6 sm:p-8 shadow-sm">
               <div className="relative min-h-[420px] flex flex-col items-center justify-center text-center">

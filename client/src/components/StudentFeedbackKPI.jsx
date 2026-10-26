@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, MessageSquare, RefreshCw } from 'lucide-react';
-import { API_BASE_URL } from '../api';
+import { API_BASE_URL, apiFetch } from '../api';
 
 const criteria = [
   ['teaching_quality', 'Teaching Quality'],
@@ -12,20 +12,20 @@ const criteria = [
 ];
 const validAverage = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null;
 
-export default function StudentFeedbackKPI({ academicYear }) {
+export default function StudentFeedbackKPI({ academicYear, department, section }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState(null);
   const load = useCallback(async (signal) => {
     try {
-      const params = new URLSearchParams({ academic_year: academicYear });
-      const response = await fetch(`${API_BASE_URL}/api/feedback/summary?${params}`, { signal });
+      const params = new URLSearchParams({ academic_year: academicYear, ...(department ? { department } : {}), ...(section ? { section } : {}) });
+      const response = await apiFetch(`${API_BASE_URL}/api/feedback/summary?${params}`, { signal });
       if (!response.ok) throw new Error(`Feedback data could not be loaded (HTTP ${response.status}).`);
       setSummary(await response.json()); setError(''); setUpdatedAt(new Date());
     } catch (e) { if (e.name !== 'AbortError') setError(e.message || 'Unable to reach the feedback service.'); }
     finally { if (!signal.aborted) setLoading(false); }
-  }, [academicYear]);
+  }, [academicYear, department, section]);
   useEffect(() => {
     const controller = new AbortController();
     setSummary(null);

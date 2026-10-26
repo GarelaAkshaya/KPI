@@ -11,6 +11,7 @@ class StudentUploadSchema(BaseModel):
     enrollment_number: Optional[str] = None
     enrollmentNumber: Optional[str] = None
     department: Optional[str] = "Artificial Intelligence and Data Science (AIDS)"
+    section: Optional[str] = None
     academic_year: Optional[str] = "2024-2025"
     academicYear: Optional[str] = "2024-2025"
     dm: Optional[int] = None
@@ -101,6 +102,23 @@ class DepartmentSchema(DepartmentBase):
         from_attributes = True
 
 
+class DepartmentOverviewItem(BaseModel):
+    name: str
+    studentCount: int
+    facultyCount: int
+
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    username: str
+
+
 # KPI Storage Schemas
 class KPIBase(BaseModel):
     name: str
@@ -129,6 +147,7 @@ class StudentAttendanceBase(BaseModel):
     enrollment_number: Optional[str] = None
     student_name: str
     department: str
+    section: Optional[str] = None
     academic_year: str
     academicYear: Optional[str] = None
     total_classes: int

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, MessageSquare } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import { API_BASE_URL } from '../api';
+import { API_BASE_URL, apiFetch } from '../api';
 
 const ratings = [
   ['teaching_quality', 'Teaching Quality'],
@@ -28,7 +28,7 @@ export default function StudentFeedbackPage() {
     }
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/feedback`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/feedback`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
       if (!response.ok) {

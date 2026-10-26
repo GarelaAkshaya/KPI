@@ -12,6 +12,7 @@ export default function StudentTable({ students }) {
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Enrollment Number</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Student Name</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Department</th>
+                <th className="px-4 py-3 text-[#1E293B] font-semibold">Section</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Academic Year</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Total Marks</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Percentage</th>
@@ -28,6 +29,7 @@ export default function StudentTable({ students }) {
                   <td className="px-4 py-3 font-medium text-[#1E293B]">{s.enrollment_number || s.enrollmentNumber || s.studentId}</td>
                   <td className="px-4 py-3 text-[#1E293B]">{s.studentName}</td>
                   <td className="px-4 py-3 text-xs text-[#64748B]">{s.department || 'AIDS'}</td>
+                  <td className="px-4 py-3 text-xs text-[#64748B]">{s.section || '—'}</td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]">
                       {s.academic_year || s.academicYear || '2024-2025'}

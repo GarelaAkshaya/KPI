@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import StudentTable from '../components/StudentTable';
 import AttendanceTable from '../components/AttendanceTable';
-import { API_BASE_URL } from '../api';
+import { API_BASE_URL, apiFetch } from '../api';
 
 export default function StudentUploadPage() {
   const navigate = useNavigate();
@@ -26,7 +26,11 @@ export default function StudentUploadPage() {
   // Student Marks Upload State
   const [selectedMarksFile, setSelectedMarksFile] = useState(null);
   const [marksAcademicYear, setMarksAcademicYear] = useState('');
+  const [marksDepartment, setMarksDepartment] = useState('');
+  const [marksSection, setMarksSection] = useState('');
   const [marksFilterYear, setMarksFilterYear] = useState('All');
+  const [marksFilterDepartment, setMarksFilterDepartment] = useState('All');
+  const [marksFilterSection, setMarksFilterSection] = useState('All');
   const [isUploadingMarks, setIsUploadingMarks] = useState(false);
   const [marksMessage, setMarksMessage] = useState('');
   const [marksStatus, setMarksStatus] = useState('idle');
@@ -39,7 +43,11 @@ export default function StudentUploadPage() {
   // Student Attendance Upload State
   const [selectedAttendanceFile, setSelectedAttendanceFile] = useState(null);
   const [attendanceAcademicYear, setAttendanceAcademicYear] = useState('');
+  const [attendanceDepartment, setAttendanceDepartment] = useState('');
+  const [attendanceSection, setAttendanceSection] = useState('');
   const [attendanceFilterYear, setAttendanceFilterYear] = useState('All');
+  const [attendanceFilterDepartment, setAttendanceFilterDepartment] = useState('All');
+  const [attendanceFilterSection, setAttendanceFilterSection] = useState('All');
   const [isUploadingAttendance, setIsUploadingAttendance] = useState(false);
   const [attendanceMessage, setAttendanceMessage] = useState('');
   const [attendanceStatus, setAttendanceStatus] = useState('idle');
@@ -67,6 +75,18 @@ export default function StudentUploadPage() {
       return;
     }
 
+    if (!marksDepartment) {
+      setMarksStatus('error');
+      setMarksMessage('Department is required. Please select the department for this upload.');
+      return;
+    }
+
+    if (!marksSection) {
+      setMarksStatus('error');
+      setMarksMessage('Section is required. Please enter the student section for this upload.');
+      return;
+    }
+
     setIsUploadingMarks(true);
     setMarksStatus('idle');
     setMarksMessage('');
@@ -74,9 +94,11 @@ export default function StudentUploadPage() {
     const formData = new FormData();
     formData.append('file', selectedMarksFile);
     formData.append('academic_year', marksAcademicYear);
+    formData.append('department', marksDepartment);
+    formData.append('section', marksSection);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/upload-students`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/upload-students`, {
         method: 'POST',
         body: formData,
       });
@@ -92,6 +114,8 @@ export default function StudentUploadPage() {
       await fetchStudents();
       setSelectedMarksFile(null);
       setMarksAcademicYear('');
+      setMarksDepartment('');
+      setMarksSection('');
       event.target.reset();
     } catch (error) {
       setMarksStatus('error');
@@ -117,6 +141,18 @@ export default function StudentUploadPage() {
       return;
     }
 
+    if (!attendanceDepartment) {
+      setAttendanceStatus('error');
+      setAttendanceMessage('Department is required. Please select the department for this upload.');
+      return;
+    }
+
+    if (!attendanceSection) {
+      setAttendanceStatus('error');
+      setAttendanceMessage('Section is required. Please enter the student section for this upload.');
+      return;
+    }
+
     setIsUploadingAttendance(true);
     setAttendanceStatus('idle');
     setAttendanceMessage('');
@@ -124,9 +160,11 @@ export default function StudentUploadPage() {
     const formData = new FormData();
     formData.append('file', selectedAttendanceFile);
     formData.append('academic_year', attendanceAcademicYear);
+    formData.append('department', attendanceDepartment);
+    formData.append('section', attendanceSection);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/upload-attendance`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/upload-attendance`, {
         method: 'POST',
         body: formData,
       });
@@ -147,6 +185,8 @@ export default function StudentUploadPage() {
       await fetchAttendance();
       setSelectedAttendanceFile(null);
       setAttendanceAcademicYear('');
+      setAttendanceDepartment('');
+      setAttendanceSection('');
       event.target.reset();
     } catch (error) {
       setAttendanceStatus('error');
@@ -161,7 +201,7 @@ export default function StudentUploadPage() {
     setFetchMarksError('');
     setLoadingStudents(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/students`);
+      const res = await apiFetch(`${API_BASE_URL}/api/students`);
       if (!res.ok) throw new Error('Failed to fetch student records.');
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error('Invalid response from server.');
@@ -180,7 +220,7 @@ export default function StudentUploadPage() {
     setFetchAttendanceError('');
     setLoadingAttendance(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/attendance`);
+      const res = await apiFetch(`${API_BASE_URL}/api/attendance`);
       if (!res.ok) throw new Error('Failed to fetch attendance records.');
       const data = await res.json();
       if (!Array.isArray(data)) throw new Error('Invalid response from server.');
@@ -229,15 +269,25 @@ export default function StudentUploadPage() {
   }
 
   // Filtered views for tables
+  const departmentOptions = ['Computer Science and Engineering', 'AI & Data Science'];
+
   const filteredStudents = React.useMemo(() => {
-    if (marksFilterYear === 'All') return students;
-    return students.filter((s) => (s.academic_year || s.academicYear) === marksFilterYear);
-  }, [students, marksFilterYear]);
+    return students.filter((s) => {
+      const yearMatches = marksFilterYear === 'All' || (s.academic_year || s.academicYear) === marksFilterYear;
+      const departmentMatches = marksFilterDepartment === 'All' || (s.department || '').trim() === marksFilterDepartment;
+      const sectionMatches = marksFilterSection === 'All' || (s.section || '').trim().toUpperCase() === marksFilterSection.toUpperCase();
+      return yearMatches && departmentMatches && sectionMatches;
+    });
+  }, [students, marksFilterYear, marksFilterDepartment, marksFilterSection]);
 
   const filteredAttendance = React.useMemo(() => {
-    if (attendanceFilterYear === 'All') return attendanceList;
-    return attendanceList.filter((a) => (a.academic_year || a.academicYear) === attendanceFilterYear);
-  }, [attendanceList, attendanceFilterYear]);
+    return attendanceList.filter((a) => {
+      const yearMatches = attendanceFilterYear === 'All' || (a.academic_year || a.academicYear) === attendanceFilterYear;
+      const departmentMatches = attendanceFilterDepartment === 'All' || (a.department || '').trim() === attendanceFilterDepartment;
+      const sectionMatches = attendanceFilterSection === 'All' || (a.section || '').trim().toUpperCase() === attendanceFilterSection.toUpperCase();
+      return yearMatches && departmentMatches && sectionMatches;
+    });
+  }, [attendanceList, attendanceFilterYear, attendanceFilterDepartment, attendanceFilterSection]);
 
   const toggleMarksTable = async () => {
     const willShow = !showMarksTable;
@@ -341,6 +391,41 @@ export default function StudentUploadPage() {
                 </div>
               </div>
 
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="marks-department" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                    Department <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    id="marks-department"
+                    required
+                    value={marksDepartment}
+                    onChange={(event) => setMarksDepartment(event.target.value)}
+                    className="w-full appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#2563EB]/40 focus:border-[#2563EB] focus:bg-[#FFFFFF] transition cursor-pointer"
+                  >
+                    <option value="">Select Department</option>
+                    {departmentOptions.map((dept) => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="marks-section" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                    Section <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    id="marks-section"
+                    type="text"
+                    required
+                    value={marksSection}
+                    onChange={(event) => setMarksSection(event.target.value)}
+                    placeholder="e.g. A, B, C1"
+                    className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#2563EB]/40 focus:border-[#2563EB] focus:bg-[#FFFFFF] transition"
+                  />
+                </div>
+              </div>
+
               <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-6 py-10 text-center transition hover:border-[#2563EB] hover:bg-[#EFF6FF]">
                 <UploadCloud className="mb-4 h-10 w-10 text-[#2563EB]" />
                 <span className="text-lg font-semibold text-[#1E293B]">Choose Marks Excel File</span>
@@ -400,25 +485,36 @@ export default function StudentUploadPage() {
                       <option value="2025-2026">2025-2026</option>
                     </select>
                   </div>
+
+                  <div className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs">
+                    <span className="text-[#64748B] font-semibold">Department:</span>
+                    <select
+                      value={marksFilterDepartment}
+                      onChange={(e) => setMarksFilterDepartment(e.target.value)}
+                      className="bg-transparent font-bold text-[#1E293B] focus:outline-none cursor-pointer"
+                    >
+                      <option value="All">All</option>
+                      {departmentOptions.map((dept) => (
+                        <option key={dept} value={dept}>{dept}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs">
+                    <span className="text-[#64748B] font-semibold">Section:</span>
+                    <select
+                      value={marksFilterSection}
+                      onChange={(e) => setMarksFilterSection(e.target.value)}
+                      className="bg-transparent font-bold text-[#1E293B] focus:outline-none cursor-pointer"
+                    >
+                      <option value="All">All</option>
+                      {Array.from(new Set(students.map((s) => String(s.section || '').trim()).filter(Boolean))).sort().map((section) => (
+                        <option key={section} value={section}>{section}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <button
-                    onClick={toggleMarksTable}
-                    className="rounded-2xl bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3B82F6]"
-                  >
-                    {loadingStudents ? 'Loading...' : (showMarksTable ? 'Hide Students' : 'View Students')}
-                  </button>
-                </div>
-              </div>
-
-              {fetchMarksError && (
-                <div className="mt-3 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-600">
-                  {fetchMarksError}
-                </div>
-              )}
-
-              {showMarksTable && (
                 <div className="mt-4">
                   {loadingStudents ? (
                     <div className="flex items-center gap-2 text-sm text-[#64748B]">
@@ -437,7 +533,7 @@ export default function StudentUploadPage() {
                     </>
                   )}
                 </div>
-              )}
+              </div>
             </div>
           </section>
         )}
@@ -521,6 +617,41 @@ export default function StudentUploadPage() {
                   </div>
                 </div>
 
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label htmlFor="attendance-department" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                      Department <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      id="attendance-department"
+                      required
+                      value={attendanceDepartment}
+                      onChange={(event) => setAttendanceDepartment(event.target.value)}
+                      className="w-full appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 focus:border-[#16A34A] focus:bg-[#FFFFFF] transition cursor-pointer"
+                    >
+                      <option value="">Select Department</option>
+                      {departmentOptions.map((dept) => (
+                        <option key={dept} value={dept}>{dept}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="attendance-section" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                      Section <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      id="attendance-section"
+                      type="text"
+                      required
+                      value={attendanceSection}
+                      onChange={(event) => setAttendanceSection(event.target.value)}
+                      placeholder="e.g. A, B, C1"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 focus:border-[#16A34A] focus:bg-[#FFFFFF] transition"
+                    />
+                  </div>
+                </div>
+
                 <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-6 py-10 text-center transition hover:border-[#16A34A] hover:bg-[#F0FDF4]">
                   <UploadCloud className="mb-4 h-10 w-10 text-[#16A34A]" />
                   <span className="text-lg font-semibold text-[#1E293B]">Choose Attendance Excel File</span>
@@ -578,6 +709,34 @@ export default function StudentUploadPage() {
                         <option value="All">All Years</option>
                         <option value="2024-2025">2024-2025</option>
                         <option value="2025-2026">2025-2026</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs">
+                      <span className="text-[#64748B] font-semibold">Department:</span>
+                      <select
+                        value={attendanceFilterDepartment}
+                        onChange={(e) => setAttendanceFilterDepartment(e.target.value)}
+                        className="bg-transparent font-bold text-[#1E293B] focus:outline-none cursor-pointer"
+                      >
+                        <option value="All">All</option>
+                        {departmentOptions.map((dept) => (
+                          <option key={dept} value={dept}>{dept}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs">
+                      <span className="text-[#64748B] font-semibold">Section:</span>
+                      <select
+                        value={attendanceFilterSection}
+                        onChange={(e) => setAttendanceFilterSection(e.target.value)}
+                        className="bg-transparent font-bold text-[#1E293B] focus:outline-none cursor-pointer"
+                      >
+                        <option value="All">All</option>
+                        {Array.from(new Set(attendanceList.map((a) => String(a.section || '').trim()).filter(Boolean))).sort().map((section) => (
+                          <option key={section} value={section}>{section}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
