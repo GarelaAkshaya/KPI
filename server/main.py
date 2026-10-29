@@ -20,6 +20,7 @@ database.init_db()
 with database.SessionLocal() as db_session:
     services.seed_initial_data(db_session)
     services.initialize_admin_account(db_session)
+    services.seed_aids_faculty(db_session)
 
 app = FastAPI(title="IFHE KPI API", version="1.0.0")
 security = HTTPBearer(auto_error=False)
@@ -298,9 +299,13 @@ def create_kpi(kpi: schemas.KPICreate, db: Session = Depends(database.get_db), _
 
 # Faculty Endpoints
 @app.get("/api/faculty", response_model=List[schemas.FacultySchema])
-def get_faculty(db: Session = Depends(database.get_db), _: models.AdminUser = Depends(get_current_admin)):
+def get_faculty(
+    department: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    _: models.AdminUser = Depends(get_current_admin),
+):
     try:
-        return services.get_all_faculty(db)
+        return services.get_all_faculty(db, department=department)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -308,10 +313,35 @@ def get_faculty(db: Session = Depends(database.get_db), _: models.AdminUser = De
         )
 
 
+@app.post("/api/faculty/import-ai-ds")
+def import_ai_ds_faculty(db: Session = Depends(database.get_db), _: models.AdminUser = Depends(get_current_admin)):
+    try:
+        added_count = services.seed_aids_faculty(db)
+        return {
+            "added_count": added_count,
+            "total_count": services.get_total_faculty(db, department="AI & Data Science"),
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to import AI & Data Science faculty: {str(e)}"
+        )
+
+
 @app.post("/api/faculty", response_model=schemas.FacultySchema, status_code=status.HTTP_201_CREATED)
 def create_faculty(faculty: schemas.FacultyCreate, db: Session = Depends(database.get_db), _: models.AdminUser = Depends(get_current_admin)):
     try:
         return services.create_faculty(db, faculty.model_dump())
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -659,4 +689,3 @@ def get_students(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=5000, reload=True)
-

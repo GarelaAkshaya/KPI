@@ -85,7 +85,8 @@ def test_repeating_sections_across_departments():
 
         ratio_aids = services.get_student_faculty_ratio_data(db, academic_year="2024-2025", section=aids_option["value"])
         assert ratio_aids["totalStudents"] == 1
-        assert ratio_aids["totalFaculty"] == 0   # AIDS has 0 faculty in DB
+        assert ratio_aids["totalFaculty"] == 32  # AI & Data Science has 32 faculty in DB
+        assert ratio_aids["ratio"] == 0.03
         print("[PASS] Student-Faculty Ratio correctly resolves department faculty for selected section")
 
     finally:

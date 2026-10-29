@@ -1347,14 +1347,41 @@ def get_kpi_summary(db: Session, academic_year: Optional[str] = None, department
 
 
 # Faculty CRUD Services
-def get_all_faculty(db: Session) -> List[models.Faculty]:
-    return db.query(models.Faculty).all()
+def get_all_faculty(db: Session, department: Optional[str] = None) -> List[models.Faculty]:
+    query = db.query(models.Faculty)
+    if department:
+        canonical_department = canonicalize_department_name(department)
+        if canonical_department:
+            query = _apply_scope(query, models.Faculty, department=department)
+        else:
+            query = query.filter(func.lower(func.trim(models.Faculty.department)) == department.strip().lower())
+    return query.order_by(models.Faculty.id).all()
 
 
 def create_faculty(db: Session, faculty_data: Dict[str, Any]) -> models.Faculty:
-    faculty = models.Faculty(**faculty_data)
+    department = canonicalize_department_name(faculty_data.get("department"))
+    stored_department = {
+        "Computer Science and Engineering": "Computer Science & Engineering",
+        "AI & Data Science": "AI & Data Science",
+    }.get(department, (faculty_data.get("department") or "").strip())
+    if not stored_department:
+        raise ValueError("Faculty department is required.")
+
+    record_data = {**faculty_data, "department": stored_department}
+    existing = db.query(models.Faculty).filter_by(faculty_id=record_data["faculty_id"]).first()
+    if existing is not None:
+        fields = ("name", "department", "experience", "designation", "qualification", "email", "image_path")
+        if all(getattr(existing, field) == record_data.get(field) for field in fields):
+            return existing
+        raise ValueError(f"Faculty ID '{record_data['faculty_id']}' already exists with different details.")
+
+    faculty = models.Faculty(**record_data)
     db.add(faculty)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(faculty)
     return faculty
 
@@ -1563,4 +1590,70 @@ def seed_initial_data(db: Session) -> None:
         db.commit()
 
 
+AIDS_FACULTY_RECORDS = [
+    ("Dr. Sandeep Kumar Panda", "Professor", "Ph.D."),
+    ("Dr. P. Pavan Kumar", "Associate Professor, HOD", "Ph.D."),
+    ("Dr. L. Lakshmi", "Associate Professor", "Ph.D."),
+    ("Dr. A. Sree Lakshmi", "Associate Professor", "Ph.D."),
+    ("Dr. Nafis Uddin Khan", "Associate Professor", "Ph.D."),
+    ("Dr. Talluri Lakshmi Siva Rama Krishna", "Senior Assistant Professor", "Ph.D."),
+    ("Dr. S Jayanthi", "Senior Assistant Professor", "Ph.D."),
+    ("Dr. P Meena Kumari", "Senior Assistant Professor", "Ph.D."),
+    ("Dr. B. Deeveena Raju", "Senior Assistant Professor", "Ph.D."),
+    ("Dr. Rashmi Sahay", "Senior Assistant Professor", "Ph.D."),
+    ("Dr. Jangam Ebenezer", "Senior Assistant Professor", "Ph.D."),
+    ("Dr. Pradosh Kumar Gantayat", "Assistant Professor", "Ph.D."),
+    ("Dr. D. Krishna Madhuri", "Assistant Professor", "Ph.D."),
+    ("Dr. Priyanka Parimi", "Assistant Professor", "Ph.D."),
+    ("Dr. Brahmanaidu Kakarla", "Assistant Professor", "Ph.D."),
+    ("Dr. K. Ramakrishna Reddy", "Assistant Professor", "Ph.D."),
+    ("Mr. P. Jagdish Kumar", "Assistant Professor", "Pursuing Ph.D."),
+    ("Dr. Tammineedi Venkata Satya Vivek", "Assistant Professor", "Ph.D."),
+    ("Dr. D. Srinivasa Rao", "Assistant Professor", "Ph.D."),
+    ("Dr. Sukanta Das", "Assistant Professor", "Ph.D."),
+    ("Dr. Pallavi Mishra", "Assistant Professor", "Ph.D."),
+    ("Mr. SAYAN NATH", "Assistant Professor", "M.Tech"),
+    ("Mr. Abiram D", "Assistant Professor", "M.Tech"),
+    ("Mr. M Rama Krishnam Raju", "Assistant Professor", "Pursuing Ph.D."),
+    ("Mr. Girish Kulkarni", "Assistant Professor", "Pursuing Ph.D."),
+    ("Mr. P. Senthilraja", "Assistant Professor", "Pursuing Ph.D."),
+    ("Ms. Kiran Preet Bedi", "Assistant Professor", "M.Tech"),
+    ("Mr. Arram Sriram", "Faculty Associate", "Pursuing Ph.D."),
+    ("Ms. S. Gani Lakshmi", "Assistant Professor", "Pursuing Ph.D."),
+    ("Mr. V V Satyanarayana Murty Bolla", "University Academic Fellow", "Pursuing Ph.D."),
+    ("Dr. Sabhapathy Myakal", "Assistant Professor", "Ph.D."),
+    ("Mr. Mohammed Kaleem", "University Academic Fellow", "MCA"),
+]
 
+
+def seed_aids_faculty(db: Session) -> int:
+    """Import the supplied AI & Data Science faculty records once per faculty ID."""
+    added = 0
+    try:
+        for index, (name, designation, qualification) in enumerate(AIDS_FACULTY_RECORDS, start=1):
+            faculty_id = f"AIDS-FAC{index:03d}"
+            existing = db.query(models.Faculty).filter_by(faculty_id=faculty_id).first()
+            if existing is not None:
+                if (
+                    existing.name != name
+                    or existing.department != "AI & Data Science"
+                    or existing.designation != designation
+                    or existing.qualification != qualification
+                ):
+                    raise ValueError(f"Faculty ID '{faculty_id}' conflicts with an existing faculty record.")
+                continue
+
+            db.add(models.Faculty(
+                faculty_id=faculty_id,
+                name=name,
+                department="AI & Data Science",
+                experience=0.0,
+                designation=designation,
+                qualification=qualification,
+            ))
+            added += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return added

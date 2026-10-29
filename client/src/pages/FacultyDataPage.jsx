@@ -7,32 +7,48 @@ export default function FacultyDataPage() {
   const [facultyData, setFacultyData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedDepartment, setSelectedDepartment] = useState('Computer Science & Engineering');
+  const [importingFaculty, setImportingFaculty] = useState(false);
+  const [importMessage, setImportMessage] = useState('');
+  const [importError, setImportError] = useState('');
   const [selectedFaculty, setSelectedFaculty] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
+    let isCurrentRequest = true;
+
     async function fetchFacultyData() {
       try {
         setLoading(true);
         setError(null);
-        const response = await apiFetch(`${API_BASE_URL}/api/faculty`);
+        const params = new URLSearchParams({ department: selectedDepartment });
+        const response = await apiFetch(`${API_BASE_URL}/api/faculty?${params}`);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch faculty data: ${response.statusText}`);
         }
         
         const data = await response.json();
-        setFacultyData(data);
+        if (isCurrentRequest) {
+          setFacultyData(data);
+        }
       } catch (err) {
-        setError(err.message || 'Failed to load faculty data');
-        console.error('Faculty data fetch error:', err);
+        if (isCurrentRequest) {
+          setError(err.message || 'Failed to load faculty data');
+          console.error('Faculty data fetch error:', err);
+        }
       } finally {
-        setLoading(false);
+        if (isCurrentRequest) {
+          setLoading(false);
+        }
       }
     }
 
     fetchFacultyData();
-  }, []);
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [selectedDepartment]);
 
   const handleViewMore = (faculty) => {
     setSelectedFaculty(faculty);
@@ -43,6 +59,37 @@ export default function FacultyDataPage() {
     setShowModal(false);
     setSelectedFaculty(null);
   };
+
+  const handleImportAidsFaculty = async () => {
+    setImportingFaculty(true);
+    setImportMessage('');
+    setImportError('');
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/api/faculty/import-ai-ds`, {
+        method: 'POST',
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.detail || 'Failed to import AI & Data Science faculty.');
+      }
+
+      const params = new URLSearchParams({ department: selectedDepartment });
+      const facultyResponse = await apiFetch(`${API_BASE_URL}/api/faculty?${params}`);
+      if (!facultyResponse.ok) {
+        throw new Error(`Import succeeded, but faculty records could not be refreshed: ${facultyResponse.statusText}`);
+      }
+      setFacultyData(await facultyResponse.json());
+      setImportMessage(
+        `${result.total_count} AI & Data Science faculty records are available; ${result.added_count} newly imported.`
+      );
+    } catch (err) {
+      setImportError(err.message || 'Failed to import AI & Data Science faculty.');
+    } finally {
+      setImportingFaculty(false);
+    }
+  };
+
+  const isCseDepartment = selectedDepartment === 'Computer Science & Engineering';
 
   const getPlaceholderImage = (name) => {
     const initials = name
@@ -76,40 +123,44 @@ export default function FacultyDataPage() {
           <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
             {/* Breadcrumb */}
             <p className="text-[#64748B] text-sm mb-4">
-              ICFAI Tech School, Hyderabad / Computer Science & Engineering
+              ICFAI Tech School, Hyderabad / {selectedDepartment}
             </p>
 
             {/* Main Header with Image and Content */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
               {/* Left: Department Image - Narrow and Tall */}
-              <div className="lg:col-span-4 rounded-2xl overflow-hidden shadow-xl">
-                <img
-                  src="https://www.ifheindia.org/IcfaiTechassets/img/inner-banners/faculty-computer-science-engineering.jpg"
-                  alt="Computer Science & Engineering Department"
-                  className="w-full h-96 lg:h-full object-cover hover:scale-105 transition-transform duration-300"
-                />
-              </div>
+              {isCseDepartment && (
+                <div className="lg:col-span-4 rounded-2xl overflow-hidden shadow-xl">
+                  <img
+                    src="https://www.ifheindia.org/IcfaiTechassets/img/inner-banners/faculty-computer-science-engineering.jpg"
+                    alt="Computer Science & Engineering Department"
+                    className="w-full h-96 lg:h-full object-cover hover:scale-105 transition-transform duration-300"
+                  />
+                </div>
+              )}
 
               {/* Right: Department Info - Takes more space */}
-              <div className="lg:col-span-8 flex flex-col justify-center">
+              <div className={`${isCseDepartment ? 'lg:col-span-8' : 'lg:col-span-12'} flex flex-col justify-center`}>
                 <h1 className="text-5xl lg:text-6xl font-extrabold text-[#1E293B] mb-8 tracking-tight leading-tight">
-                  Computer Science & Engineering
+                  {selectedDepartment}
                 </h1>
 
-                <div className="space-y-4 text-[#475569] text-base lg:text-lg leading-relaxed">
-                  <p className="flex gap-4">
-                    <span className="text-[#2563EB] font-bold text-xl flex-shrink-0">•</span>
-                    <span>The B.Tech Programme is approved by AICTE. We are living in the midst of an extraordinary transformation of the way we live, powered by computers.</span>
-                  </p>
-                  <p className="flex gap-4">
-                    <span className="text-[#2563EB] font-bold text-xl flex-shrink-0">•</span>
-                    <span>This transformation has impacted every aspect of society – from communication, manufacturing, transportation, medical care, governance, education, entertainment, and social interactions.</span>
-                  </p>
-                  <p className="flex gap-4">
-                    <span className="text-[#2563EB] font-bold text-xl flex-shrink-0">•</span>
-                    <span>Our curriculum prepares the student by providing a rigorous foundation in the discipline, exposure to emerging areas that are gaining wide application and relevance such as Artificial Intelligence, Data Analytics and Information Security through elective offerings, mastery of the concepts through projects and assignments, experience in real-world applications and practices through industry internships, and exposure to ongoing research problems and the methodology of research and innovation.</span>
-                  </p>
-                </div>
+                {isCseDepartment && (
+                  <div className="space-y-4 text-[#475569] text-base lg:text-lg leading-relaxed">
+                    <p className="flex gap-4">
+                      <span className="text-[#2563EB] font-bold text-xl flex-shrink-0">•</span>
+                      <span>The B.Tech Programme is approved by AICTE. We are living in the midst of an extraordinary transformation of the way we live, powered by computers.</span>
+                    </p>
+                    <p className="flex gap-4">
+                      <span className="text-[#2563EB] font-bold text-xl flex-shrink-0">•</span>
+                      <span>This transformation has impacted every aspect of society – from communication, manufacturing, transportation, medical care, governance, education, entertainment, and social interactions.</span>
+                    </p>
+                    <p className="flex gap-4">
+                      <span className="text-[#2563EB] font-bold text-xl flex-shrink-0">•</span>
+                      <span>Our curriculum prepares the student by providing a rigorous foundation in the discipline, exposure to emerging areas that are gaining wide application and relevance such as Artificial Intelligence, Data Analytics and Information Security through elective offerings, mastery of the concepts through projects and assignments, experience in real-world applications and practices through industry internships, and exposure to ongoing research problems and the methodology of research and innovation.</span>
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -118,16 +169,44 @@ export default function FacultyDataPage() {
         {/* Faculty Directory Section */}
         <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
           {/* Page Header */}
-          <div className="mb-8">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex items-center gap-3 mb-2">
               <Users className="w-8 h-8 text-[#2563EB]" />
               <h2 className="text-3xl sm:text-4xl font-extrabold text-[#1E293B] tracking-tight">
                 Faculty Directory
               </h2>
             </div>
-            <p className="text-[#64748B] text-base leading-relaxed max-w-2xl">
-              Browse and explore comprehensive faculty profiles and qualifications across the institution.
-            </p>
+            <div className="flex flex-col gap-3">
+              <label className="flex flex-col gap-2 text-sm font-semibold text-[#334155]">
+                Department
+                <select
+                  value={selectedDepartment}
+                  onChange={(event) => {
+                    setSelectedDepartment(event.target.value);
+                    setImportMessage('');
+                    setImportError('');
+                  }}
+                  className="min-w-64 rounded-lg border border-[#CBD5E1] bg-white px-3 py-2.5 font-normal"
+                >
+                  <option value="Computer Science & Engineering">Computer Science &amp; Engineering</option>
+                  <option value="AI & Data Science">
+                    AI &amp; Data Science (AI&amp;DS)
+                  </option>
+                </select>
+              </label>
+              {selectedDepartment === 'AI & Data Science' && (
+                <button
+                  type="button"
+                  onClick={handleImportAidsFaculty}
+                  disabled={importingFaculty}
+                  className="rounded-lg bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {importingFaculty ? 'Importing Faculty...' : 'Import AI&DS Faculty'}
+                </button>
+              )}
+              {importMessage && <p role="status" className="text-sm text-emerald-700">{importMessage}</p>}
+              {importError && <p role="alert" className="text-sm text-red-700">{importError}</p>}
+            </div>
           </div>
 
         {/* Loading State */}
@@ -158,7 +237,7 @@ export default function FacultyDataPage() {
             <Users className="w-12 h-12 text-[#CBD5E1] mx-auto mb-3" />
             <p className="text-[#64748B] font-semibold">No faculty records found</p>
             <p className="text-sm text-[#94A3B8] mt-1">
-              Faculty data will appear here once records are added to the system.
+              No faculty are currently listed for {selectedDepartment}.
             </p>
           </div>
         )}
