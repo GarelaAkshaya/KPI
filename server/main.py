@@ -261,12 +261,13 @@ def get_pass_percentage_kpi(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
     try:
         norm_year = services.normalize_academic_year(academic_year) or "2024-2025"
-        return services.get_pass_percentage_kpi(db, academic_year=norm_year, department=department, section=section)
+        return services.get_pass_percentage_kpi(db, academic_year=norm_year, department=department, section=section, semester=semester)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -476,6 +477,78 @@ def create_lab_utilization(lab: schemas.LaboratoryUtilizationCreate, db: Session
         )
 
 
+@app.post("/api/preview-student-marks", response_model=schemas.WorkbookPreviewResponse)
+async def preview_student_marks(
+    file: UploadFile = File(...),
+    academic_year: Optional[str] = Form(None),
+    academicYear: Optional[str] = Form(None),
+    department: Optional[str] = Form(None),
+    section: Optional[str] = Form(None),
+    semester: Optional[str] = Form(None),
+    db: Session = Depends(database.get_db),
+    _: models.AdminUser = Depends(get_current_admin),
+):
+    selected_year = (academic_year or academicYear or "").strip()
+    selected_department = (department or "").strip()
+    selected_section = (section or "").strip()
+    selected_semester = (semester or "").strip()
+
+    if not selected_year:
+        raise HTTPException(status_code=400, detail="Academic Year is required. Please select an academic year.")
+    if not selected_department:
+        raise HTTPException(status_code=400, detail="Department is required.")
+    if not selected_section:
+        raise HTTPException(status_code=400, detail="Section is required.")
+    if not selected_semester:
+        raise HTTPException(status_code=400, detail="Semester is required. Please select Semester 1, 2, 3 or 4.")
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="Please select an Excel file.")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    try:
+        preview_data = services.parse_semester_workbook_for_preview(
+            file_contents=contents,
+            file_name=file.filename,
+            academic_year=selected_year,
+            department=selected_department,
+            section=selected_section,
+            semester=selected_semester,
+        )
+        return preview_data
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to preview workbook: {str(e)}")
+
+
+@app.get("/api/semester-config")
+def get_semester_config(
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    _: models.AdminUser = Depends(get_current_admin),
+):
+    norm_year = services.normalize_academic_year(academic_year) or "2024-2025"
+    norm_dept = department or "Artificial Intelligence and Data Science (AIDS)"
+    norm_sec = section or "A"
+
+    return {
+        "academic_year": norm_year,
+        "department": norm_dept,
+        "section": norm_sec,
+        "semesters": {
+            "Semester 1": services.get_configured_subjects_for_semester(norm_dept, norm_sec, norm_year, "Semester 1"),
+            "Semester 2": services.get_configured_subjects_for_semester(norm_dept, norm_sec, norm_year, "Semester 2"),
+            "Semester 3": services.get_configured_subjects_for_semester(norm_dept, norm_sec, norm_year, "Semester 3"),
+            "Semester 4": services.get_configured_subjects_for_semester(norm_dept, norm_sec, norm_year, "Semester 4"),
+        }
+    }
+
+
 @app.post("/api/upload-students", response_model=schemas.UploadResponse)
 async def upload_students(
     file: UploadFile = File(...),
@@ -483,6 +556,7 @@ async def upload_students(
     academicYear: Optional[str] = Form(None),
     department: Optional[str] = Form(None),
     section: Optional[str] = Form(None),
+    semester: Optional[str] = Form(None),
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
@@ -514,6 +588,7 @@ async def upload_students(
             content={"message": "Please upload a file."}
         )
 
+    selected_semester = (semester or "").strip()
     try:
         contents = await file.read()
         if not contents:
@@ -521,6 +596,45 @@ async def upload_students(
                 status_code=400,
                 content={"message": "Uploaded file is empty."}
             )
+
+        # Multi-worksheet semester workbook upload
+        if selected_semester or services.is_semester_workbook(contents):
+            target_sem = selected_semester or "Semester 1"
+            preview_data = services.parse_semester_workbook_for_preview(
+                file_contents=contents,
+                file_name=file.filename,
+                academic_year=norm_year,
+                department=selected_department,
+                section=selected_section,
+                semester=target_sem,
+            )
+            if not preview_data.get("valid"):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "message": "Validation failed: " + "; ".join(preview_data.get("errors", [])[:5]),
+                        "errors": preview_data.get("errors", [])
+                    }
+                )
+
+            result = services.save_semester_marks(
+                db=db,
+                workbook_data=preview_data,
+                academic_year=norm_year,
+                department=selected_department,
+                section=selected_section,
+                semester=target_sem,
+            )
+            return {
+                "message": result["message"],
+                "count": result["count"],
+                "students": result["students"],
+                "subjects": result["subjects"],
+                "subject_names": result["subject_names"],
+                "academic_year": norm_year,
+                "academicYear": norm_year,
+                "semester": target_sem,
+            }
 
         records, has_invalid_row = services.parse_excel_file(
             contents,
@@ -672,12 +786,13 @@ def get_students(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
     try:
         norm_year = services.normalize_academic_year(academic_year)
-        students = services.get_all_students(db, academic_year=norm_year, department=department, section=section)
+        students = services.get_all_students(db, academic_year=norm_year, department=department, section=section, semester=semester)
         return students
     except Exception as e:
         raise HTTPException(

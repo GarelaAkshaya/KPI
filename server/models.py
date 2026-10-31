@@ -13,6 +13,7 @@ class StudentUpload(Base):
     studentName = Column(String, nullable=False)
     department = Column(String, nullable=True, default="Artificial Intelligence and Data Science (AIDS)")
     section = Column(String, nullable=True, default=None)
+    semester = Column(String, nullable=True, default="Semester 1", index=True)
     totalMarks = Column(Integer, nullable=False)
     percentage = Column(Float, nullable=False)
     academic_year = Column(String, nullable=False, default="2024-2025", index=True)
@@ -22,6 +23,7 @@ class StudentUpload(Base):
     python_marks = Column(Integer, nullable=True)
     ml = Column(Integer, nullable=True)
     subject_marks_json = Column(Text, nullable=True, default='{}')
+    component_marks_json = Column(Text, nullable=True, default='{}')
     createdAt = Column(String, nullable=False, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     @property
@@ -58,21 +60,52 @@ class StudentUpload(Base):
         return None
 
     @property
+    def component_marks(self):
+        if self.component_marks_json:
+            try:
+                parsed = json.loads(self.component_marks_json)
+                if isinstance(parsed, dict) and len(parsed) > 0:
+                    return parsed
+            except Exception:
+                pass
+        return {}
+
+    @property
     def has_all_five_subjects(self):
         marks = self.subject_marks
         if not marks:
             return False
-        for subj in ("DM", "DSC", "COA", "Python", "ML"):
-            if marks.get(subj) is None:
-                return False
-        return True
+        if all(marks.get(subj) is not None for subj in ("DM", "DSC", "COA", "Python", "ML")):
+            return True
+        return len(marks) >= 5
 
     @property
     def passed_all_subjects(self):
         marks = self.subject_marks
-        if not self.has_all_five_subjects:
+        if not marks:
             return False
-        return all(int(marks[subj]) >= 40 for subj in ("DM", "DSC", "COA", "Python", "ML"))
+        return all(int(marks[subj]) >= 40 for subj in marks if marks[subj] is not None)
+
+
+class StudentMark(Base):
+    __tablename__ = "student_marks"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    student_id = Column(String, nullable=False, index=True)
+    enrollment_number = Column(String, nullable=True, index=True)
+    student_name = Column(String, nullable=False)
+    department = Column(String, nullable=False, index=True)
+    section = Column(String, nullable=True, index=True)
+    academic_year = Column(String, nullable=False, index=True)
+    semester = Column(String, nullable=False, index=True)
+    subject = Column(String, nullable=False, index=True)
+    test1 = Column(Float, nullable=True)
+    lab1 = Column(Float, nullable=True)
+    test2 = Column(Float, nullable=True)
+    lab2 = Column(Float, nullable=True)
+    compre = Column(Float, nullable=True)
+    total = Column(Float, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
 class LaboratoryUtilization(Base):
@@ -179,4 +212,3 @@ class StudentAttendance(Base):
     @property
     def academicYear(self):
         return self.academic_year
-

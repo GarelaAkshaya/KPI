@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 
@@ -12,6 +12,7 @@ class StudentUploadSchema(BaseModel):
     enrollmentNumber: Optional[str] = None
     department: Optional[str] = "Artificial Intelligence and Data Science (AIDS)"
     section: Optional[str] = None
+    semester: Optional[str] = "Semester 1"
     academic_year: Optional[str] = "2024-2025"
     academicYear: Optional[str] = "2024-2025"
     dm: Optional[int] = None
@@ -20,6 +21,7 @@ class StudentUploadSchema(BaseModel):
     python_marks: Optional[int] = None
     ml: Optional[int] = None
     subject_marks: Optional[dict[str, Optional[int]]] = None
+    component_marks: Optional[dict[str, dict[str, Optional[float]]]] = None
     createdAt: str
 
     class Config:
@@ -58,6 +60,50 @@ class UploadResponse(BaseModel):
     average_attendance: Optional[float] = None
     academic_year: Optional[str] = None
     academicYear: Optional[str] = None
+    semester: Optional[str] = None
+
+
+# Multi-subject Semester Workbook Schemas
+class StudentMarkItem(BaseModel):
+    s_no: Optional[int] = None
+    enrollment_number: str
+    student_name: str
+    test1: Optional[float] = None
+    lab1: Optional[float] = None
+    test2: Optional[float] = None
+    lab2: Optional[float] = None
+    compre: Optional[float] = None
+    total: float
+
+
+class SubjectSheetPreview(BaseModel):
+    subject_name: str
+    sheet_name: Optional[str] = None
+    student_count: int
+    valid_rows: Optional[int] = None
+    average_total: float
+    min_total: float
+    max_total: float
+    rows: list[StudentMarkItem] = []
+    sample_rows: Optional[list[StudentMarkItem]] = None
+    is_valid: bool
+    errors: list[str] = []
+
+
+class WorkbookPreviewResponse(BaseModel):
+    valid: bool
+    academic_year: str
+    department: str
+    section: str
+    semester: str
+    total_sheets: Optional[int] = None
+    total_students: int
+    filename: Optional[str] = None
+    sheets: list[SubjectSheetPreview]
+    errors: list[str] = []
+    warnings: list[str] = []
+    configured_subjects: list[str] = []
+    detected_subjects: list[str] = []
 
 
 # Faculty Schemas
@@ -65,7 +111,7 @@ class FacultyBase(BaseModel):
     faculty_id: str
     name: str
     department: str
-    experience: float
+    experience: float = 0.0
     designation: Optional[str] = None
     qualification: Optional[str] = None
     email: Optional[str] = None
@@ -115,6 +161,7 @@ class SectionFilterOption(BaseModel):
     value: str
 
 
+# Authentication Schemas
 class AdminLoginRequest(BaseModel):
     username: str
     password: str
@@ -126,7 +173,7 @@ class TokenResponse(BaseModel):
     username: str
 
 
-# KPI Storage Schemas
+# KPI Schemas
 class KPIBase(BaseModel):
     name: str
     academic_year: str
@@ -156,13 +203,12 @@ class StudentAttendanceBase(BaseModel):
     department: str
     section: Optional[str] = None
     academic_year: str
-    academicYear: Optional[str] = None
-    total_classes: int
-    attended_classes: int
-    attendance_percentage: Optional[float] = None
-    average_attendance: Optional[float] = None
-    subjects: Optional[list[str]] = None
-    subject_values: Optional[dict[str, float]] = None
+    total_classes: int = 0
+    attended_classes: int = 0
+    attendance_percentage: float = 0.0
+    average_attendance: float = 0.0
+    subjects: list[str] = []
+    subject_values: dict[str, float] = {}
 
 
 class StudentAttendanceCreate(StudentAttendanceBase):
@@ -171,7 +217,6 @@ class StudentAttendanceCreate(StudentAttendanceBase):
 
 class StudentAttendanceSchema(StudentAttendanceBase):
     id: int
-    attendance_percentage: float
 
     class Config:
         from_attributes = True
@@ -180,13 +225,14 @@ class StudentAttendanceSchema(StudentAttendanceBase):
 # Student Feedback Schemas
 class StudentFeedbackCreate(BaseModel):
     class Config:
-        extra = "forbid"
+        extra = "ignore"
 
-    teaching_quality: int = Field(ge=1, le=5)
-    course_content: int = Field(ge=1, le=5)
-    learning_resources: int = Field(ge=1, le=5)
-    faculty_support: int = Field(ge=1, le=5)
-    overall_satisfaction: int = Field(ge=1, le=5)
+    teaching_quality: int = Field(..., ge=1, le=5)
+    course_content: int = Field(..., ge=1, le=5)
+    learning_resources: int = Field(..., ge=1, le=5)
+    faculty_support: int = Field(..., ge=1, le=5)
+    overall_satisfaction: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = None
 
 
 class StudentFeedbackSubmissionResponse(BaseModel):
@@ -194,9 +240,6 @@ class StudentFeedbackSubmissionResponse(BaseModel):
 
 
 class StudentFeedbackSummaryResponse(BaseModel):
-    academic_year: Optional[str] = None
-    department: Optional[str] = None
-    total_responses: int
     all_responses: int
     unattributed_responses: int
     other_year_responses: int
@@ -264,6 +307,7 @@ class OverallPassFail(BaseModel):
 class PassPercentageKPIResponse(BaseModel):
     academic_year: str
     academicYear: str
+    semester: Optional[str] = None
     total_students_evaluated: int
     total_students_count: int
     uncalculated_count: int
@@ -272,4 +316,3 @@ class PassPercentageKPIResponse(BaseModel):
     overall_pass_percentage: float
     overall_fail_percentage: float
     message: Optional[str] = None
-

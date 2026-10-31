@@ -832,6 +832,514 @@ def match_attendance_students(db: Session, records: List[Dict[str, Any]], academ
     return matched_records, unmatched
 
 
+# ============================================================================
+# SEMESTER WORKBOOK SUBJECT CONFIGURATIONS & HELPERS
+# ============================================================================
+
+SEMESTER_CONFIGS = {
+    "AIDS": {
+        "A": {
+            "2024-2025": {
+                "Semester 1": [
+                    "Computer Programming",
+                    "Basic Electronics",
+                    "English",
+                    "Digital Fabrication",
+                    "Chemistry",
+                ],
+                "Semester 2": [
+                    "Data Structures",
+                    "Engineering Graphics",
+                    "EVS",
+                    "Physics",
+                    "Higher Calculus",
+                ],
+                "Semester 3": [
+                    "AI",
+                    "IoT",
+                    "OOPs",
+                    "DBMS",
+                    "EEM",
+                ],
+                "Semester 4": [],  # Configurable: will accept any subjects dynamically
+            }
+        }
+    }
+}
+
+SUBJECT_ALIASES = {
+    "computer programming": ["computer programming", "cp", "programming in c", "computer programming using c", "c programming"],
+    "basic electronics": ["basic electronics", "be", "electronics", "bee"],
+    "english": ["english", "technical english", "communication skills", "eng"],
+    "digital fabrication": ["digital fabrication", "df", "fab lab", "fabrication"],
+    "chemistry": ["chemistry", "chem", "engineering chemistry"],
+    "data structures": ["data structures", "ds", "dsa", "data structures & algorithms"],
+    "engineering graphics": ["engineering graphics", "eg", "graphics", "cad"],
+    "evs": ["evs", "environmental science", "environmental studies", "environment"],
+    "physics": ["physics", "phy", "engineering physics"],
+    "higher calculus": ["higher calculus", "hc", "calculus", "advanced calculus", "mathematics", "maths"],
+    "ai": ["ai", "artificial intelligence", "intro to ai"],
+    "iot": ["iot", "internet of things"],
+    "oops": ["oops", "oop", "object oriented programming", "object oriented programming with java", "object oriented programming with c++"],
+    "dbms": ["dbms", "database management systems", "database management system", "database"],
+    "eem": ["eem", "engineering economics and management", "engineering economics & management", "economics"],
+}
+
+
+def get_configured_subjects_for_semester(department: str, section: str, academic_year: str, semester: str) -> List[str]:
+    norm_year = normalize_academic_year(academic_year) or "2024-2025"
+    norm_dept = canonicalize_department_name(department)
+    dept_key = "AIDS" if norm_dept == "AI & Data Science" else norm_dept
+    sec_key = (section or "").strip().upper()
+    sem_key = (semester or "").strip()
+
+    dept_cfg = SEMESTER_CONFIGS.get(dept_key) or SEMESTER_CONFIGS.get("AIDS", {})
+    sec_cfg = dept_cfg.get(sec_key) or dept_cfg.get("A", {})
+    year_cfg = sec_cfg.get(norm_year) or sec_cfg.get("2024-2025", {})
+    return year_cfg.get(sem_key, [])
+
+
+def match_subject_name(sheet_name: str, configured_subjects: List[str]) -> str:
+    cleaned = sheet_name.strip()
+    if not configured_subjects:
+        return cleaned
+    for cs in configured_subjects:
+        if cs.lower() == cleaned.lower():
+            return cs
+    clean_no_punct = re.sub(r'[\s_\-\.]+', '', cleaned.lower())
+    for cs in configured_subjects:
+        aliases = SUBJECT_ALIASES.get(cs.lower(), [cs.lower()])
+        for a in aliases:
+            a_no_punct = re.sub(r'[\s_\-\.]+', '', a.lower())
+            if clean_no_punct == a_no_punct:
+                return cs
+    return cleaned
+
+
+def _find_col(headers: List[str], patterns: List[str]) -> Optional[str]:
+    for pat in patterns:
+        clean_pat = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', pat.lower())
+        for h in headers:
+            clean_h = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', str(h).lower())
+            if clean_pat == clean_h:
+                return h
+    for pat in patterns:
+        clean_pat = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', pat.lower())
+        for h in headers:
+            clean_h = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', str(h).lower())
+            if clean_pat in clean_h or clean_h in clean_pat:
+                return h
+    return None
+
+
+def is_semester_workbook(file_contents: bytes) -> bool:
+    try:
+        xl = openpyxl.load_workbook(io.BytesIO(file_contents), read_only=True)
+        if len(xl.sheetnames) > 1:
+            return True
+        ws = xl.active
+        for row in ws.iter_rows(max_row=3, values_only=True):
+            r_str = " ".join(str(v).lower() for v in row if v is not None)
+            if "test 1" in r_str or "compre" in r_str:
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def parse_semester_workbook_for_preview(
+    file_contents: bytes,
+    file_name: str,
+    academic_year: str,
+    department: str,
+    section: str,
+    semester: str
+) -> Dict[str, Any]:
+    norm_year = normalize_academic_year(academic_year)
+    if norm_year not in {"2024-2025", "2025-2026"}:
+        raise ValueError(f"Invalid Academic Year '{academic_year}'. Only '2024-2025' and '2025-2026' are accepted.")
+
+    if not semester or not semester.strip():
+        raise ValueError("Semester is required. Please select Semester 1, 2, 3 or 4.")
+    norm_sem = semester.strip()
+    if norm_sem not in {"Semester 1", "Semester 2", "Semester 3", "Semester 4"}:
+        raise ValueError(f"Invalid Semester '{semester}'. Only 'Semester 1', 'Semester 2', 'Semester 3', and 'Semester 4' are supported.")
+
+    if not department or not department.strip():
+        raise ValueError("Department is required.")
+    norm_dept = department.strip()
+
+    if not section or not section.strip():
+        raise ValueError("Section is required.")
+    norm_sec = section.strip().upper()
+
+    configured_subjects = get_configured_subjects_for_semester(norm_dept, norm_sec, norm_year, norm_sem)
+
+    try:
+        excel_file = pd.ExcelFile(io.BytesIO(file_contents))
+    except Exception as e:
+        raise ValueError(f"Unable to read Excel workbook: {str(e)}")
+
+    sheet_names = excel_file.sheet_names
+    if not sheet_names:
+        raise ValueError("The uploaded Excel workbook contains no worksheets.")
+
+    sheets_data = []
+    all_errors = []
+    all_unique_students = set()
+    detected_subjects = []
+
+    for s_name in sheet_names:
+        clean_s_name = s_name.strip()
+        try:
+            df = pd.read_excel(io.BytesIO(file_contents), sheet_name=s_name)
+        except Exception as e:
+            all_errors.append(f"Could not read worksheet '{clean_s_name}': {str(e)}")
+            continue
+
+        df = df.where(pd.notnull(df), None)
+        if df.empty or len(df.columns) == 0:
+            continue
+
+        header_row_idx = 0
+        cols_str = " ".join(str(c).lower() for c in df.columns)
+        if not any(k in cols_str for k in ["enrol", "student", "test", "name"]):
+            for r_idx in range(min(5, len(df))):
+                row_vals_str = " ".join(str(v).lower() for v in df.iloc[r_idx] if v is not None)
+                if any(k in row_vals_str for k in ["enrol", "student", "test", "name"]):
+                    header_row_idx = r_idx + 1
+                    df = pd.read_excel(io.BytesIO(file_contents), sheet_name=s_name, skiprows=header_row_idx)
+                    df = df.where(pd.notnull(df), None)
+                    break
+
+        headers = [str(c).strip() for c in df.columns]
+
+        col_enrol = _find_col(headers, ["enrolno", "enrol_no", "enrollment_number", "enrollment number", "enrollment no", "student id", "studentid", "rollno", "roll no"])
+        col_name = _find_col(headers, ["name", "student name", "student_name", "name of student"])
+        col_sno = _find_col(headers, ["s#", "s.#", "s.no", "s no", "sno", "sl.no", "sl no", "serial no"])
+        col_test1 = _find_col(headers, ["test 1 (15)", "test 1(15)", "test-1 (15)", "test 1", "test-1", "test1"])
+        col_lab1 = _find_col(headers, ["lab-1 (15)", "lab 1 (15)", "lab-1(15)", "lab 1(15)", "lab-1", "lab 1", "lab1"])
+        col_test2 = _find_col(headers, ["test 2 (15)", "test 2(15)", "test-2 (15)", "test 2", "test-2", "test2"])
+        col_lab2 = _find_col(headers, ["lab-2 (15)", "lab 2 (15)", "lab-2(15)", "lab 2(15)", "lab-2", "lab 2", "lab2"])
+        col_compre = _find_col(headers, ["compre (40)", "compre(40)", "compre", "comprehension", "end sem", "comprehensive"])
+
+        sheet_errors = []
+        if not col_enrol:
+            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Enrolno' column.")
+        if not col_name:
+            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Name' column.")
+        if not col_test1:
+            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Test 1 (15)' column.")
+        if not col_lab1:
+            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Lab-1 (15)' column.")
+        if not col_test2:
+            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Test 2 (15)' column.")
+        if not col_lab2:
+            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Lab-2 (15)' column.")
+        if not col_compre:
+            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Compre (40)' column.")
+
+        canonical_subject = match_subject_name(clean_s_name, configured_subjects)
+        detected_subjects.append(canonical_subject)
+
+        rows_list = []
+        totals_list = []
+
+        if not sheet_errors:
+            for row_idx, r in df.iterrows():
+                excel_row_num = row_idx + header_row_idx + 2
+                raw_enrol = r.get(col_enrol)
+                raw_name = r.get(col_name)
+
+                if _is_missing(raw_enrol) and _is_missing(raw_name):
+                    continue
+
+                if _is_missing(raw_enrol) or str(raw_enrol).strip() == "":
+                    sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Missing Enrollment Number.")
+                    continue
+
+                enrol_str = str(raw_enrol).strip().upper()
+                if not re.match(r"^[0-9A-Z]{5,18}$", enrol_str):
+                    sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Invalid Enrollment Number '{enrol_str}'.")
+
+                if _is_missing(raw_name) or str(raw_name).strip() == "":
+                    sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Missing Student Name.")
+                    name_str = "Unknown"
+                else:
+                    name_str = str(raw_name).strip()
+
+                sno_val = None
+                if col_sno and not _is_missing(r.get(col_sno)):
+                    try:
+                        sno_val = int(float(str(r.get(col_sno)).strip()))
+                    except Exception:
+                        sno_val = len(rows_list) + 1
+                else:
+                    sno_val = len(rows_list) + 1
+
+                def parse_comp(raw_val, comp_name, max_val):
+                    if _is_missing(raw_val) or str(raw_val).strip() == "":
+                        sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Missing mark for {comp_name}.")
+                        return 0.0
+                    try:
+                        val = float(str(raw_val).strip())
+                    except Exception:
+                        sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Invalid mark '{raw_val}' for {comp_name}. Must be numeric.")
+                        return 0.0
+                    if val < 0 or val > max_val:
+                        sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Mark {val} for {comp_name} outside range [0, {max_val}].")
+                    return round(val, 2)
+
+                t1 = parse_comp(r.get(col_test1), "Test 1", 15)
+                l1 = parse_comp(r.get(col_lab1), "Lab-1", 15)
+                t2 = parse_comp(r.get(col_test2), "Test 2", 15)
+                l2 = parse_comp(r.get(col_lab2), "Lab-2", 15)
+                comp = parse_comp(r.get(col_compre), "Compre", 40)
+
+                # Automatic Total calculation
+                calculated_total = round(t1 + l1 + t2 + l2 + comp, 2)
+                totals_list.append(calculated_total)
+                all_unique_students.add(enrol_str)
+
+                rows_list.append({
+                    "s_no": sno_val,
+                    "enrollment_number": enrol_str,
+                    "student_name": name_str,
+                    "test1": t1,
+                    "lab1": l1,
+                    "test2": t2,
+                    "lab2": l2,
+                    "compre": comp,
+                    "total": calculated_total,
+                })
+
+        avg_tot = round(sum(totals_list) / float(len(totals_list)), 2) if totals_list else 0.0
+        min_tot = min(totals_list) if totals_list else 0.0
+        max_tot = max(totals_list) if totals_list else 0.0
+
+        sheets_data.append({
+            "subject_name": canonical_subject,
+            "sheet_name": clean_s_name,
+            "student_count": len(rows_list),
+            "valid_rows": len(rows_list),
+            "average_total": avg_tot,
+            "min_total": min_tot,
+            "max_total": max_tot,
+            "rows": rows_list,
+            "sample_rows": rows_list,
+            "is_valid": len(sheet_errors) == 0,
+            "errors": sheet_errors,
+        })
+        all_errors.extend(sheet_errors)
+
+    if not sheets_data:
+        all_errors.append("No valid worksheets containing student mark columns found in the uploaded workbook.")
+
+    return {
+        "valid": len(all_errors) == 0,
+        "academic_year": norm_year,
+        "department": norm_dept,
+        "section": norm_sec,
+        "semester": norm_sem,
+        "total_sheets": len(sheets_data),
+        "total_students": len(all_unique_students),
+        "filename": file_name,
+        "sheets": sheets_data,
+        "errors": all_errors,
+        "warnings": [],
+        "configured_subjects": configured_subjects,
+        "detected_subjects": detected_subjects,
+    }
+
+
+def save_semester_marks(
+    db: Session,
+    workbook_data: Dict[str, Any],
+    academic_year: str,
+    department: str,
+    section: str,
+    semester: str
+) -> Dict[str, Any]:
+    if not workbook_data.get("valid"):
+        raise ValueError("Cannot save invalid workbook. Errors: " + "; ".join(workbook_data.get("errors", [])[:5]))
+
+    norm_year = normalize_academic_year(academic_year) or "2024-2025"
+    norm_dept = department.strip()
+    norm_sec = section.strip().upper()
+    norm_sem = semester.strip()
+
+    sheets = workbook_data.get("sheets", [])
+    if not sheets:
+        raise ValueError("No valid worksheets found to save.")
+
+    subjects_in_workbook = [s["subject_name"] for s in sheets]
+
+    try:
+        # 1. Scoped replacement in student_marks:
+        # Delete existing marks only for selected semester, section, academic_year, department and subjects in workbook
+        del_q = db.query(models.StudentMark).filter(
+            models.StudentMark.academic_year == norm_year,
+            models.StudentMark.semester == norm_sem,
+            models.StudentMark.department == norm_dept,
+            func.lower(func.trim(models.StudentMark.section)) == norm_sec.lower(),
+            models.StudentMark.subject.in_(subjects_in_workbook)
+        )
+        del_count = del_q.delete(synchronize_session=False)
+
+        # 2. Insert new student_marks rows
+        new_marks = []
+        students_map = {}
+
+        for sheet in sheets:
+            subj_name = sheet["subject_name"]
+            for row in sheet["rows"]:
+                enrol = row["enrollment_number"]
+                name = row["student_name"]
+                t1 = row.get("test1")
+                l1 = row.get("lab1")
+                t2 = row.get("test2")
+                l2 = row.get("lab2")
+                comp = row.get("compre")
+                tot = row.get("total")
+
+                mark_obj = models.StudentMark(
+                    student_id=enrol,
+                    enrollment_number=enrol,
+                    student_name=name,
+                    department=norm_dept,
+                    section=norm_sec,
+                    academic_year=norm_year,
+                    semester=norm_sem,
+                    subject=subj_name,
+                    test1=t1,
+                    lab1=l1,
+                    test2=t2,
+                    lab2=l2,
+                    compre=comp,
+                    total=tot,
+                )
+                new_marks.append(mark_obj)
+
+                if enrol not in students_map:
+                    students_map[enrol] = {
+                        "enrollment_number": enrol,
+                        "student_name": name,
+                    }
+
+        db.add_all(new_marks)
+        db.flush()
+
+        # 3. Synchronize consolidated student_uploads table
+        for enrol, s_info in students_map.items():
+            all_student_marks = db.query(models.StudentMark).filter(
+                models.StudentMark.academic_year == norm_year,
+                models.StudentMark.semester == norm_sem,
+                models.StudentMark.department == norm_dept,
+                func.lower(func.trim(models.StudentMark.section)) == norm_sec.lower(),
+                func.lower(func.trim(models.StudentMark.enrollment_number)) == enrol.lower()
+            ).all()
+
+            subject_marks_dict = {m.subject: round(m.total, 2) for m in all_student_marks}
+            component_marks_dict = {
+                m.subject: {
+                    "test1": m.test1,
+                    "lab1": m.lab1,
+                    "test2": m.test2,
+                    "lab2": m.lab2,
+                    "compre": m.compre,
+                    "total": m.total,
+                }
+                for m in all_student_marks
+            }
+
+            tot_marks = int(round(sum(m.total for m in all_student_marks)))
+            num_subjs = len(all_student_marks)
+            pct = round((tot_marks / float(num_subjs * 100)) * 100.0, 2) if num_subjs > 0 else 0.0
+
+            existing_upload = db.query(models.StudentUpload).filter(
+                func.lower(func.trim(models.StudentUpload.studentId)) == enrol.lower(),
+                models.StudentUpload.academic_year == norm_year,
+                models.StudentUpload.semester == norm_sem,
+                func.lower(func.trim(models.StudentUpload.section)) == norm_sec.lower()
+            ).first()
+
+            if not existing_upload:
+                existing_upload = db.query(models.StudentUpload).filter(
+                    func.lower(func.trim(models.StudentUpload.studentId)) == enrol.lower(),
+                    models.StudentUpload.academic_year == norm_year,
+                    func.lower(func.trim(models.StudentUpload.section)) == norm_sec.lower(),
+                    models.StudentUpload.semester.is_(None)
+                ).first()
+
+            if existing_upload:
+                existing_upload.studentName = s_info["student_name"]
+                existing_upload.enrollment_number = enrol
+                existing_upload.department = norm_dept
+                existing_upload.section = norm_sec
+                existing_upload.semester = norm_sem
+                existing_upload.totalMarks = tot_marks
+                existing_upload.percentage = pct
+                existing_upload.academic_year = norm_year
+                existing_upload.subject_marks_json = json.dumps(subject_marks_dict)
+                existing_upload.component_marks_json = json.dumps(component_marks_dict)
+            else:
+                new_upload = models.StudentUpload(
+                    studentId=enrol,
+                    enrollment_number=enrol,
+                    studentName=s_info["student_name"],
+                    department=norm_dept,
+                    section=norm_sec,
+                    semester=norm_sem,
+                    totalMarks=tot_marks,
+                    percentage=pct,
+                    academic_year=norm_year,
+                    subject_marks_json=json.dumps(subject_marks_dict),
+                    component_marks_json=json.dumps(component_marks_dict),
+                )
+                db.add(new_upload)
+
+        db.commit()
+
+        return {
+            "message": f"Successfully processed {len(sheets)} subject worksheets for {norm_sem} ({len(students_map)} students).",
+            "count": len(new_marks),
+            "students": len(students_map),
+            "subjects": len(sheets),
+            "subject_names": subjects_in_workbook,
+            "academic_year": norm_year,
+            "semester": norm_sem,
+        }
+    except Exception as e:
+        db.rollback()
+        raise e
+
+
+def get_student_subject_marks(
+    db: Session,
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+    semester: Optional[str] = None,
+    subject: Optional[str] = None,
+    student_id: Optional[str] = None,
+) -> List[models.StudentMark]:
+    query = db.query(models.StudentMark)
+    if academic_year:
+        norm_year = normalize_academic_year(academic_year)
+        query = query.filter(models.StudentMark.academic_year == norm_year)
+    if department:
+        query = _apply_scope(query, models.StudentMark, department=department)
+    if section:
+        query = query.filter(func.lower(func.trim(models.StudentMark.section)) == section.strip().lower())
+    if semester and semester.strip().lower() != "all":
+        query = query.filter(func.lower(func.trim(models.StudentMark.semester)) == semester.strip().lower())
+    if subject:
+        query = query.filter(func.lower(func.trim(models.StudentMark.subject)) == subject.strip().lower())
+    if student_id:
+        query = query.filter(func.lower(func.trim(models.StudentMark.student_id)) == student_id.strip().lower())
+    return query.order_by(models.StudentMark.id.asc()).all()
+
+
 def parse_excel_file(
     file_contents: bytes,
     academic_year: Optional[str] = None,
@@ -914,14 +1422,20 @@ def save_student_records(db: Session, records: List[Dict[str, Any]], academic_ye
     return saved_count
 
 
-def get_all_students(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> List[models.StudentUpload]:
+def get_all_students(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None, semester: Optional[str] = None) -> List[models.StudentUpload]:
     query = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, academic_year, department, section)
+    if semester and semester.strip() and semester.strip().lower() != "all":
+        query = query.filter(func.lower(func.trim(models.StudentUpload.semester)) == semester.strip().lower())
     return query.order_by(models.StudentUpload.id.desc()).all()
 
 
-def get_student_count(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> int:
-    query = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, academic_year, department, section)
-    return query.count()
+def get_student_count(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None, semester: Optional[str] = None) -> int:
+    query = db.query(func.count(func.distinct(models.StudentUpload.studentId)))
+    query = _apply_scope(query, models.StudentUpload, academic_year, department, section)
+    if semester and semester.strip() and semester.strip().lower() != "all":
+        query = query.filter(func.lower(func.trim(models.StudentUpload.semester)) == semester.strip().lower())
+    res = query.scalar()
+    return int(res or 0)
 
 
 def get_total_faculty(db: Session, department: Optional[str] = None) -> int:
@@ -1179,28 +1693,113 @@ def get_student_faculty_ratio(db: Session, academic_year: Optional[str] = None) 
     return round(total_students / float(total_faculty), 2)
 
 
-def get_pass_percentage_kpi(db: Session, academic_year: Optional[str] = "2024-2025", department: Optional[str] = None, section: Optional[str] = None) -> Dict[str, Any]:
+def get_pass_percentage_kpi(
+    db: Session,
+    academic_year: Optional[str] = "2024-2025",
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+    semester: Optional[str] = None
+) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
-    all_students = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, norm_year, department, section).all()
     
-    # Exclude incomplete or invalid marks records from the pass percentage denominator
-    evaluated_students = [s for s in all_students if s.has_all_five_subjects]
-    total_evaluated = len(evaluated_students)
+    query = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, norm_year, department, section)
+    if semester and semester.strip() and semester.strip().lower() != "all":
+        query = query.filter(func.lower(func.trim(models.StudentUpload.semester)) == semester.strip().lower())
+    
+    all_students = query.all()
     total_count = len(all_students)
+
+    # A student is evaluated if they have recorded subject marks
+    evaluated_students = [s for s in all_students if s.subject_marks and len(s.subject_marks) > 0]
+    total_evaluated = len(evaluated_students)
     uncalculated_count = total_count - total_evaluated
 
-    subject_configs = [
-        ("DM", "Discrete Mathematics"),
-        ("DSC", "Dynamics of Social Change"),
-        ("COA", "Computer Organization and Architecture"),
-        ("Python", "Industry Coding Practice"),
-        ("ML", "Machine Learning"),
-    ]
+    # Subject code map
+    SUBJECT_CODE_MAP = {
+        "computer programming": ("CP", "Computer Programming"),
+        "basic electronics": ("BE", "Basic Electronics"),
+        "english": ("ENG", "English"),
+        "digital fabrication": ("DF", "Digital Fabrication"),
+        "chemistry": ("CHEM", "Chemistry"),
+        "data structures": ("DS", "Data Structures"),
+        "engineering graphics": ("EG", "Engineering Graphics"),
+        "evs": ("EVS", "Environmental Studies (EVS)"),
+        "physics": ("PHY", "Physics"),
+        "higher calculus": ("HC", "Higher Calculus"),
+        "ai": ("AI", "Artificial Intelligence"),
+        "iot": ("IoT", "Internet of Things"),
+        "oops": ("OOPs", "Object Oriented Programming"),
+        "dbms": ("DBMS", "Database Management Systems"),
+        "eem": ("EEM", "Engineering Economics and Management"),
+        "dm": ("DM", "Discrete Mathematics"),
+        "discrete mathematics": ("DM", "Discrete Mathematics"),
+        "dsc": ("DSC", "Dynamics of Social Change"),
+        "dynamics of social change": ("DSC", "Dynamics of Social Change"),
+        "coa": ("COA", "Computer Organization and Architecture"),
+        "computer organization and architecture": ("COA", "Computer Organization and Architecture"),
+        "python": ("Python", "Industry Coding Practice"),
+        "industry coding practice": ("Python", "Industry Coding Practice"),
+        "ml": ("ML", "Machine Learning"),
+        "machine learning": ("ML", "Machine Learning"),
+    }
+
+    # Discover subjects for this cohort
+    configured_subjects = []
+    if department and section and semester and semester.strip().lower() != "all":
+        configured_subjects = get_configured_subjects_for_semester(department, section, norm_year, semester.strip())
+    
+    detected_subjects_order = []
+    seen_subjects = set()
+
+    for cs in configured_subjects:
+        if cs.lower() not in seen_subjects:
+            seen_subjects.add(cs.lower())
+            detected_subjects_order.append(cs)
+
+    for s in evaluated_students:
+        for subj in s.subject_marks.keys():
+            if subj.lower() not in seen_subjects:
+                seen_subjects.add(subj.lower())
+                detected_subjects_order.append(subj)
+
+    if not detected_subjects_order:
+        if semester and semester.strip() in SEMESTER_CONFIGS.get("AIDS", {}).get("A", {}).get("2024-2025", {}):
+            detected_subjects_order = SEMESTER_CONFIGS["AIDS"]["A"]["2024-2025"][semester.strip()]
+        else:
+            detected_subjects_order = ["Computer Programming", "Basic Electronics", "English", "Digital Fabrication", "Chemistry"]
+
+    def _get_code_and_name(s_name: str) -> Tuple[str, str]:
+        s_lower = s_name.strip().lower()
+        if s_lower in SUBJECT_CODE_MAP:
+            return SUBJECT_CODE_MAP[s_lower]
+        if len(s_name.strip()) <= 5:
+            return (s_name.strip(), s_name.strip())
+        words = s_name.strip().split()
+        if len(words) > 1:
+            code = "".join(w[0].upper() for w in words if w)
+        else:
+            code = s_name.strip()[:4].upper()
+        return (code, s_name.strip())
 
     if total_evaluated == 0:
+        subjects_data = []
+        for subj in detected_subjects_order:
+            code, full_name = _get_code_and_name(subj)
+            subjects_data.append({
+                "subject": code,
+                "subject_name": full_name,
+                "passed": 0,
+                "failed": 0,
+                "total": 0,
+                "pass_percentage": 0.0,
+                "fail_percentage": 0.0,
+            })
+
+        sem_label = f" ({semester})" if semester and semester != "All" else ""
         return {
             "academic_year": norm_year,
             "academicYear": norm_year,
+            "semester": semester or "All",
             "total_students_evaluated": 0,
             "total_students_count": total_count,
             "uncalculated_count": uncalculated_count,
@@ -1211,48 +1810,57 @@ def get_pass_percentage_kpi(db: Session, academic_year: Optional[str] = "2024-20
                 "pass_percentage": 0.0,
                 "fail_percentage": 0.0,
             },
-            "subjects": [
-                {
-                    "subject": code,
-                    "subject_name": name,
-                    "passed": 0,
-                    "failed": 0,
-                    "total": 0,
-                    "pass_percentage": 0.0,
-                    "fail_percentage": 0.0,
-                }
-                for code, name in subject_configs
-            ],
+            "subjects": subjects_data,
             "overall_pass_percentage": 0.0,
             "overall_fail_percentage": 0.0,
-            "message": f"No evaluated student records with complete 5-subject marks found for academic year {norm_year}. Please upload student marks sheet to view Pass Percentage KPI."
+            "message": f"No evaluated student marks found for Academic Year {norm_year}{sem_label}. Please upload student marks sheet to view Pass Percentage KPI."
         }
 
     subjects_data = []
-    for code, name in subject_configs:
-        passed = sum(1 for s in evaluated_students if s.subject_marks and int(s.subject_marks.get(code, 0)) >= 40)
-        failed = total_evaluated - passed
-        pass_pct = round((passed / float(total_evaluated)) * 100.0, 2)
-        fail_pct = round((failed / float(total_evaluated)) * 100.0, 2)
+    for subj in detected_subjects_order:
+        code, full_name = _get_code_and_name(subj)
+        students_with_subj = [s for s in evaluated_students if s.subject_marks and (subj in s.subject_marks or code in s.subject_marks)]
+        
+        if students_with_subj:
+            sub_total = len(students_with_subj)
+            passed = sum(
+                1 for s in students_with_subj 
+                if float(s.subject_marks.get(subj, s.subject_marks.get(code, 0))) >= 40.0
+            )
+            failed = sub_total - passed
+        else:
+            sub_total = total_evaluated
+            passed = 0
+            failed = sub_total
+
+        pass_pct = round((passed / float(sub_total)) * 100.0, 2) if sub_total > 0 else 0.0
+        fail_pct = round((failed / float(sub_total)) * 100.0, 2) if sub_total > 0 else 0.0
+
         subjects_data.append({
             "subject": code,
-            "subject_name": name,
+            "subject_name": full_name,
             "passed": passed,
             "failed": failed,
-            "total": total_evaluated,
+            "total": sub_total,
             "pass_percentage": pass_pct,
             "fail_percentage": fail_pct,
         })
 
-    # Overall pass criteria: student passes overall only if they score >= 40 in ALL FIVE SUBJECTS.
-    overall_passed = sum(1 for s in evaluated_students if s.passed_all_subjects)
+    # Overall pass criteria: student passes overall only if they score >= 40 in ALL their evaluated subjects.
+    overall_passed = 0
+    for s in evaluated_students:
+        marks = s.subject_marks or {}
+        if marks and all(float(val) >= 40.0 for val in marks.values() if val is not None):
+            overall_passed += 1
+
     overall_failed = total_evaluated - overall_passed
-    overall_pass_pct = round((overall_passed / float(total_evaluated)) * 100.0, 2)
-    overall_fail_pct = round((overall_failed / float(total_evaluated)) * 100.0, 2)
+    overall_pass_pct = round((overall_passed / float(total_evaluated)) * 100.0, 2) if total_evaluated > 0 else 0.0
+    overall_fail_pct = round((overall_failed / float(total_evaluated)) * 100.0, 2) if total_evaluated > 0 else 0.0
 
     return {
         "academic_year": norm_year,
         "academicYear": norm_year,
+        "semester": semester or "All",
         "total_students_evaluated": total_evaluated,
         "total_students_count": total_count,
         "uncalculated_count": uncalculated_count,
@@ -1270,9 +1878,9 @@ def get_pass_percentage_kpi(db: Session, academic_year: Optional[str] = "2024-20
     }
 
 
-def get_pass_percentage(db: Session, academic_year: Optional[str] = None) -> float:
+def get_pass_percentage(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None, semester: Optional[str] = None) -> float:
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
-    kpi_data = get_pass_percentage_kpi(db, academic_year=norm_year)
+    kpi_data = get_pass_percentage_kpi(db, academic_year=norm_year, department=department, section=section, semester=semester)
     if kpi_data["total_students_evaluated"] > 0:
         return kpi_data["overall_pass_percentage"]
     # Fallback for legacy records

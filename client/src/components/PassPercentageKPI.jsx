@@ -18,6 +18,21 @@ import {
 import { API_BASE_URL, apiFetch } from '../api';
 
 const SUBJECT_DETAILS = {
+  CP: { code: 'CP', name: 'Computer Programming', credits: 4, icon: '💻' },
+  BE: { code: 'BE', name: 'Basic Electronics', credits: 3, icon: '⚡' },
+  ENG: { code: 'ENG', name: 'English', credits: 3, icon: '📖' },
+  DF: { code: 'DF', name: 'Digital Fabrication', credits: 3, icon: '🖨️' },
+  CHEM: { code: 'CHEM', name: 'Chemistry', credits: 4, icon: '🧪' },
+  DS: { code: 'DS', name: 'Data Structures', credits: 4, icon: '🌳' },
+  EG: { code: 'EG', name: 'Engineering Graphics', credits: 3, icon: '📐' },
+  EVS: { code: 'EVS', name: 'Environmental Studies', credits: 3, icon: '🌱' },
+  PHY: { code: 'PHY', name: 'Physics', credits: 4, icon: '⚛️' },
+  HC: { code: 'HC', name: 'Higher Calculus', credits: 4, icon: '∫' },
+  AI: { code: 'AI', name: 'Artificial Intelligence', credits: 4, icon: '🤖' },
+  IoT: { code: 'IoT', name: 'Internet of Things', credits: 3, icon: '📡' },
+  OOPs: { code: 'OOPs', name: 'Object Oriented Programming', credits: 4, icon: '☕' },
+  DBMS: { code: 'DBMS', name: 'Database Management Systems', credits: 4, icon: '🗄️' },
+  EEM: { code: 'EEM', name: 'Engineering Economics & Management', credits: 3, icon: '📊' },
   DM: { code: 'DM', name: 'Discrete Mathematics', credits: 4, icon: '📐' },
   DSC: { code: 'DSC', name: 'Dynamics of Social Change', credits: 3, icon: '🌍' },
   COA: { code: 'COA', name: 'Computer Organization & Architecture', credits: 4, icon: '💻' },
@@ -25,8 +40,20 @@ const SUBJECT_DETAILS = {
   ML: { code: 'ML', name: 'Machine Learning', credits: 4, icon: '🤖' },
 };
 
+function getSubjectMeta(code, name) {
+  if (code && SUBJECT_DETAILS[code]) return SUBJECT_DETAILS[code];
+  if (name && SUBJECT_DETAILS[name]) return SUBJECT_DETAILS[name];
+  for (const key of Object.keys(SUBJECT_DETAILS)) {
+    if (name && SUBJECT_DETAILS[key].name.toLowerCase() === name.toLowerCase()) {
+      return SUBJECT_DETAILS[key];
+    }
+  }
+  return { code: code || name, name: name || code, credits: 3, icon: '📚' };
+}
+
 export default function PassPercentageKPI({ academicYear = '2024-2025', department, section, onAcademicYearChange }) {
   const [internalYear, setInternalYear] = useState(academicYear);
+  const [selectedSemester, setSelectedSemester] = useState('All');
 
   useEffect(() => {
     setInternalYear(academicYear);
@@ -44,7 +71,13 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
       setIsLoading(true);
       setError('');
       try {
-        const queryParam = `?${new URLSearchParams({ academic_year: activeYear, ...(department ? { department } : {}), ...(section ? { section } : {}) })}`;
+        const params = {
+          academic_year: activeYear,
+          ...(selectedSemester && selectedSemester !== 'All' ? { semester: selectedSemester } : {}),
+          ...(department ? { department } : {}),
+          ...(section ? { section } : {}),
+        };
+        const queryParam = `?${new URLSearchParams(params)}`;
         const res = await apiFetch(`${API_BASE_URL}/api/kpis/pass-percentage${queryParam}`);
         if (!res.ok) {
           throw new Error('Unable to retrieve pass percentage KPI data.');
@@ -58,7 +91,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
       }
     }
     fetchPassPercentage();
-  }, [activeYear, department, section]);
+  }, [activeYear, selectedSemester, department, section]);
 
   const totalEvaluated = data?.total_students_evaluated || 0;
   const overallPassed = data?.overall?.passed || 0;
@@ -101,7 +134,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 <span className="text-2xl">🎓</span>
               </h2>
               <p className="text-slate-600 text-xs sm:text-sm mt-1 max-w-2xl">
-                Comprehensive semester outcome tracking evaluating subject-level pass thresholds (≥ 40 marks) and overall student success across all 5 mandatory subjects.
+                Comprehensive semester outcome tracking evaluating subject-level pass thresholds (≥ 40 marks) and overall student success across all registered semester subjects.
               </p>
             </div>
 
@@ -120,6 +153,22 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 >
                   <option value="2024-2025">2024-2025</option>
                   <option value="2025-2026">2025-2026</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700">
+                <Layers className="w-4 h-4 text-[#4F46E5]" />
+                <span>Semester:</span>
+                <select
+                  value={selectedSemester}
+                  onChange={(e) => setSelectedSemester(e.target.value)}
+                  className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="All">All Semesters</option>
+                  <option value="Semester 1">Semester 1</option>
+                  <option value="Semester 2">Semester 2</option>
+                  <option value="Semester 3">Semester 3</option>
+                  <option value="Semester 4">Semester 4</option>
                 </select>
               </div>
 
@@ -152,9 +201,11 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
               <div className="mx-auto w-12 h-12 rounded-2xl bg-indigo-50 text-[#4F46E5] flex items-center justify-center mb-3">
                 <GraduationCap className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-slate-800">No Evaluated Student Marks for Academic Year {activeYear}</h3>
+              <h3 className="text-base font-bold text-slate-800">
+                No Evaluated Student Marks for Academic Year {activeYear} {selectedSemester !== 'All' ? `(${selectedSemester})` : ''}
+              </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                There are currently no student records in the database with complete marks for all 5 subjects (DM, DSC, COA, Python, ML). Upload a student marks spreadsheet for {activeYear} to view live KPI analytics.
+                {data?.message || `There are currently no student records in the database for the selected filters. Upload a student marks workbook for ${activeYear} to view live Pass Percentage analytics.`}
               </p>
             </div>
           )}
@@ -199,7 +250,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 </div>
 
                 <p className="text-[11px] text-indigo-200 mt-2">
-                  Criteria: Student passes all 5 core subjects (DM, DSC, COA, Python, ML).
+                  Criteria: Student passes all registered semester subjects (≥ 40 marks).
                 </p>
               </div>
 
@@ -254,7 +305,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
               {/* CARD 3: Students Passed Overall */}
               <div className="bg-white/95 rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow duration-200">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Passed All 5 Subjects</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Passed All Subjects</span>
                   <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
@@ -267,7 +318,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1 font-medium">
-                    Students with zero backlogs across all 5 subjects.
+                    Students with zero backlogs across all evaluated subjects.
                   </p>
                 </div>
               </div>
@@ -309,7 +360,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1 font-medium">
-                    Total students with valid 5-subject marks records.
+                    Total students with valid evaluated marks records.
                   </p>
                 </div>
               </div>
@@ -326,7 +377,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
         
         {/* ========================================================= */}
         {/* CHART A: SUBJECT-WISE PASS AND FAIL (7 cols on LG)        */}
-        {/* Grouped Bar Chart: DM, DSC, COA, Python, ML               */}
+        {/* Grouped Bar Chart: Dynamic Semester Subjects              */}
         {/* ========================================================= */}
         <section className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-100">
@@ -365,134 +416,142 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
               </div>
             ) : (
               <div className="w-full overflow-x-auto">
-                <svg
-                  viewBox="0 0 650 300"
-                  className="w-full min-w-[540px] h-[300px]"
-                  role="img"
-                  aria-label="Subject-wise pass and fail grouped bar chart"
-                >
-                  {/* Grid Lines */}
-                  {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
-                    const y = 240 - ratio * 190;
-                    const val = Math.round(ratio * maxBarCount);
-                    return (
-                      <g key={ratio}>
-                        <line x1="50" y1={y} x2="620" y2={y} stroke="#F1F5F9" strokeDasharray="3 3" />
-                        <text x="35" y={y + 4} textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600">
-                          {val}
-                        </text>
-                      </g>
-                    );
-                  })}
+                {(() => {
+                  const totalSubjs = subjectsList.length;
+                  const chartW = Math.max(620, totalSubjs * 105 + 80);
+                  const grpW = totalSubjs > 0 ? (chartW - 90) / totalSubjs : 100;
+                  const bWidth = Math.min(30, Math.max(18, (grpW - 20) / 2));
 
-                  {/* Baseline Axis */}
-                  <line x1="50" y1="240" x2="620" y2="240" stroke="#CBD5E1" strokeWidth="1.5" />
+                  return (
+                    <svg
+                      viewBox={`0 0 ${chartW} 300`}
+                      style={{ minWidth: `${Math.min(chartW, 540)}px` }}
+                      className="w-full h-[300px]"
+                      role="img"
+                      aria-label="Subject-wise pass and fail grouped bar chart"
+                    >
+                      {/* Grid Lines */}
+                      {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
+                        const y = 240 - ratio * 190;
+                        const val = Math.round(ratio * maxBarCount);
+                        return (
+                          <g key={ratio}>
+                            <line x1="50" y1={y} x2={chartW - 20} y2={y} stroke="#F1F5F9" strokeDasharray="3 3" />
+                            <text x="35" y={y + 4} textAnchor="end" fontSize="10" fill="#94A3B8" fontWeight="600">
+                              {val}
+                            </text>
+                          </g>
+                        );
+                      })}
 
-                  {/* 5 Subjects Grouped Bars */}
-                  {subjectsList.map((subj, idx) => {
-                    const groupWidth = 110;
-                    const groupX = 65 + idx * groupWidth;
-                    const barWidth = 32;
+                      {/* Baseline Axis */}
+                      <line x1="50" y1="240" x2={chartW - 20} y2="240" stroke="#CBD5E1" strokeWidth="1.5" />
 
-                    const passHeight = maxBarCount > 0 ? (subj.passed / maxBarCount) * 190 : 0;
-                    const passY = 240 - passHeight;
+                      {/* Subjects Grouped Bars */}
+                      {subjectsList.map((subj, idx) => {
+                        const groupX = 55 + idx * grpW + (grpW - (bWidth * 2 + 8)) / 2;
 
-                    const failHeight = maxBarCount > 0 ? (subj.failed / maxBarCount) * 190 : 0;
-                    const failY = 240 - failHeight;
+                        const passHeight = maxBarCount > 0 ? (subj.passed / maxBarCount) * 190 : 0;
+                        const passY = 240 - passHeight;
 
-                    const isHovered = hoveredSubject === subj.subject;
+                        const failHeight = maxBarCount > 0 ? (subj.failed / maxBarCount) * 190 : 0;
+                        const failY = 240 - failHeight;
 
-                    return (
-                      <g
-                        key={subj.subject}
-                        onMouseEnter={() => setHoveredSubject(subj.subject)}
-                        onMouseLeave={() => setHoveredSubject(null)}
-                        className="cursor-pointer transition-opacity duration-150"
-                        opacity={hoveredSubject && !isHovered ? 0.45 : 1}
-                      >
-                        {/* Hover Background Highlight */}
-                        {isHovered && (
-                          <rect
-                            x={groupX - 10}
-                            y="25"
-                            width={barWidth * 2 + 30}
-                            height="225"
-                            rx="12"
-                            fill="#F8FAFC"
-                          />
-                        )}
+                        const isHovered = hoveredSubject === subj.subject;
 
-                        {/* Bar 1: Passed (Green) */}
-                        <rect
-                          x={groupX}
-                          y={passY}
-                          width={barWidth}
-                          height={Math.max(passHeight, 2)}
-                          rx="6"
-                          fill="#10B981"
-                          className="transition-all duration-300"
-                        />
-                        {/* Passed Count Label */}
-                        <text
-                          x={groupX + barWidth / 2}
-                          y={passY - 6}
-                          textAnchor="middle"
-                          fontSize="11"
-                          fontWeight="700"
-                          fill="#047857"
-                        >
-                          {subj.passed}
-                        </text>
+                        return (
+                          <g
+                            key={subj.subject}
+                            onMouseEnter={() => setHoveredSubject(subj.subject)}
+                            onMouseLeave={() => setHoveredSubject(null)}
+                            className="cursor-pointer transition-opacity duration-150"
+                            opacity={hoveredSubject && !isHovered ? 0.45 : 1}
+                          >
+                            {/* Hover Background Highlight */}
+                            {isHovered && (
+                              <rect
+                                x={groupX - 8}
+                                y="25"
+                                width={bWidth * 2 + 24}
+                                height="225"
+                                rx="12"
+                                fill="#F8FAFC"
+                              />
+                            )}
 
-                        {/* Bar 2: Failed (Red) */}
-                        <rect
-                          x={groupX + barWidth + 8}
-                          y={failY}
-                          width={barWidth}
-                          height={Math.max(failHeight, 2)}
-                          rx="6"
-                          fill="#EF4444"
-                          className="transition-all duration-300"
-                        />
-                        {/* Failed Count Label */}
-                        <text
-                          x={groupX + barWidth + 8 + barWidth / 2}
-                          y={failY - 6}
-                          textAnchor="middle"
-                          fontSize="11"
-                          fontWeight="700"
-                          fill="#B91C1C"
-                        >
-                          {subj.failed}
-                        </text>
+                            {/* Bar 1: Passed (Green) */}
+                            <rect
+                              x={groupX}
+                              y={passY}
+                              width={bWidth}
+                              height={Math.max(passHeight, 2)}
+                              rx="6"
+                              fill="#10B981"
+                              className="transition-all duration-300"
+                            />
+                            {/* Passed Count Label */}
+                            <text
+                              x={groupX + bWidth / 2}
+                              y={passY - 6}
+                              textAnchor="middle"
+                              fontSize="11"
+                              fontWeight="700"
+                              fill="#047857"
+                            >
+                              {subj.passed}
+                            </text>
 
-                        {/* Subject Code Label */}
-                        <text
-                          x={groupX + barWidth + 4}
-                          y="262"
-                          textAnchor="middle"
-                          fontSize="12"
-                          fontWeight="800"
-                          fill="#1E293B"
-                        >
-                          {subj.subject}
-                        </text>
+                            {/* Bar 2: Failed (Red) */}
+                            <rect
+                              x={groupX + bWidth + 6}
+                              y={failY}
+                              width={bWidth}
+                              height={Math.max(failHeight, 2)}
+                              rx="6"
+                              fill="#EF4444"
+                              className="transition-all duration-300"
+                            />
+                            {/* Failed Count Label */}
+                            <text
+                              x={groupX + bWidth + 6 + bWidth / 2}
+                              y={failY - 6}
+                              textAnchor="middle"
+                              fontSize="11"
+                              fontWeight="700"
+                              fill="#B91C1C"
+                            >
+                              {subj.failed}
+                            </text>
 
-                        {/* Pass % Badge below label */}
-                        <text
-                          x={groupX + barWidth + 4}
-                          y="278"
-                          textAnchor="middle"
-                          fontSize="10"
-                          fontWeight="700"
-                          fill="#10B981"
-                        >
-                          {subj.pass_percentage}% Pass
-                        </text>
-                      </g>
-                    );
-                  })}
-                </svg>
+                            {/* Subject Code Label */}
+                            <text
+                              x={groupX + bWidth + 3}
+                              y="262"
+                              textAnchor="middle"
+                              fontSize="11"
+                              fontWeight="800"
+                              fill="#1E293B"
+                            >
+                              {subj.subject}
+                            </text>
+
+                            {/* Pass % Badge below label */}
+                            <text
+                              x={groupX + bWidth + 3}
+                              y="278"
+                              textAnchor="middle"
+                              fontSize="10"
+                              fontWeight="700"
+                              fill="#10B981"
+                            >
+                              {subj.pass_percentage}%
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -501,10 +560,12 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
           {hoveredSubject && (
             <div className="mt-4 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs animate-fadeIn">
               <div className="flex items-center gap-2">
-                <span className="text-lg">{SUBJECT_DETAILS[hoveredSubject]?.icon || '📚'}</span>
+                <span className="text-lg">
+                  {getSubjectMeta(hoveredSubject, subjectsList.find((s) => s.subject === hoveredSubject)?.subject_name).icon}
+                </span>
                 <div>
                   <p className="font-bold text-slate-900">
-                    {hoveredSubject} — {SUBJECT_DETAILS[hoveredSubject]?.name || hoveredSubject}
+                    {hoveredSubject} — {subjectsList.find((s) => s.subject === hoveredSubject)?.subject_name || getSubjectMeta(hoveredSubject).name}
                   </p>
                   <p className="text-[11px] text-slate-500">Pass Criteria: Marks ≥ 40 / 100</p>
                 </div>
@@ -523,7 +584,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
 
         {/* ========================================================= */}
         {/* CHART B: OVERALL STUDENT PASS/FAIL (5 cols on LG)         */}
-        {/* Overall Pass = All 5 Passed; Fail = >= 1 Failed           */}
+        {/* Overall Pass = All Subjects Passed; Fail = >= 1 Failed    */}
         {/* ========================================================= */}
         <section className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-xs flex flex-col justify-between">
           <div>
@@ -536,7 +597,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                   Chart B — Overall Student Pass / Fail
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Distribution of students passing all 5 subjects vs students failing one or more subjects.
+                  Distribution of students passing all semester subjects vs students failing one or more subjects.
                 </p>
               </div>
             </div>
@@ -598,7 +659,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                   </div>
                   <p className="text-2xl font-black text-emerald-900">{overallPassed}</p>
                   <p className="text-[11px] font-bold text-emerald-700 mt-0.5">{overallPassPct}% of Students</p>
-                  <p className="text-[10px] text-emerald-600 mt-1">Cleared All 5 Subjects</p>
+                  <p className="text-[10px] text-emerald-600 mt-1">Cleared All Subjects</p>
                 </div>
 
                 <div className="rounded-2xl p-3.5 bg-rose-50/70 border border-rose-200/80 text-center">

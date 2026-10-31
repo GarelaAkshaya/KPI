@@ -11,10 +11,10 @@ export default function HomePage() {
   const [modalState, setModalState] = useState({ isOpen: false, featureName: '' });
 
   const [stats, setStats] = useState({
-    totalStudents: 12458,
-    totalFaculty: 612,
-    totalDepartments: 28,
-    activeKPIs: 15,
+    totalStudents: 0,
+    totalFaculty: 0,
+    totalDepartments: 0,
+    activeKPIs: 0,
     isLive: false,
   });
 
@@ -44,32 +44,32 @@ export default function HomePage() {
   const summaryCards = [
     {
       title: "Total Students",
-      value: stats.totalStudents ? stats.totalStudents.toLocaleString() : "12,458",
-      change: "↑ 8.2% from last year",
+      value: stats.totalStudents !== undefined && stats.totalStudents !== null ? stats.totalStudents.toLocaleString() : "0",
+      change: stats.totalStudents > 0 ? "Enrolled students" : "No active students",
       icon: GraduationCap,
       iconBg: "bg-[#EFF6FF] text-[#2563EB]",
-      badgeColor: "text-[#10B981]",
+      badgeColor: stats.totalStudents > 0 ? "text-[#10B981]" : "text-[#64748B]",
     },
     {
       title: "Total Faculty",
-      value: stats.totalFaculty ? stats.totalFaculty.toLocaleString() : "612",
-      change: "↑ 5.6% from last year",
+      value: stats.totalFaculty !== undefined && stats.totalFaculty !== null ? stats.totalFaculty.toLocaleString() : "0",
+      change: "Institutional Faculty",
       icon: UserCheck,
       iconBg: "bg-[#F3E8FF] text-[#9333EA]",
       badgeColor: "text-[#10B981]",
     },
     {
       title: "Departments",
-      value: stats.totalDepartments ? stats.totalDepartments.toString() : "28",
-      change: "No change",
+      value: stats.totalDepartments !== undefined && stats.totalDepartments !== null ? stats.totalDepartments.toString() : "0",
+      change: "Configured departments",
       icon: Building2,
       iconBg: "bg-[#ECFDF5] text-[#059669]",
       badgeColor: "text-[#64748B]",
     },
     {
       title: "Active KPIs",
-      value: stats.activeKPIs ? stats.activeKPIs.toString() : "15",
-      change: "↑ 2 new this month",
+      value: stats.activeKPIs !== undefined && stats.activeKPIs !== null ? stats.activeKPIs.toString() : "0",
+      change: "Active metrics",
       icon: LineChart,
       iconBg: "bg-[#FFFBEB] text-[#D97706]",
       badgeColor: "text-[#10B981]",
