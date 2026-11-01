@@ -132,6 +132,45 @@ For local development, keep `VITE_API_URL=http://localhost:5000` and omit `DATAB
 | `GET` | `/api/stats` | Fetches live database counts for Total Students, Total Faculty, Departments, and Active KPIs. |
 | `POST` | `/api/upload-students` | Accepts Excel (`.xlsx`) upload, normalizes Student ID, Student Name, Total Marks & Percentage, and saves records into `ifhe_kpi.db`. |
 | `GET` | `/api/students` | Retrieves all uploaded student records ordered by latest entry. |
+| `POST` | `/api/feedback` | Public single-use-code redemption; saves anonymous ratings/comments without the code or student identifier. |
+| `POST` | `/api/feedback/validate-code` | Publicly validates an unused code and returns its faculty/year scope. |
+| `GET` | `/api/public/feedback/departments` | Lists department IDs, codes, and names for the public form. |
+| `GET` | `/api/public/feedback/faculty/?department_id=<id>` | Lists minimal faculty details for the selected department. |
+| `GET` | `/api/public/feedback/academic-year` | Returns the configured active year (`ACTIVE_ACADEMIC_YEAR`, otherwise the newest supported year). |
+| `POST` | `/api/public/feedback/validate-token` | Validates a code against its faculty, department, and academic year without returning its hash. |
+| `POST` | `/api/public/feedback/submit` | Atomically consumes a scoped code and stores anonymous ratings and comments. |
+| `POST` | `/api/feedback/tokens/issue` | Admin-authenticated CSV export of a requested batch of single-use codes for one faculty member and academic year. |
+| `POST` | `/api/admin/feedback/tokens` | Admin-authenticated alias for generating a new one-time CSV token export. |
+| `GET` | `/api/feedback/faculty` | Admin-authenticated, read-only faculty feedback, rating aggregates, comments, and academic-year/department filters. |
+| `GET` | `/api/feedback/summary` | Admin-authenticated aggregate feedback summary used by the Student Feedback Improvement KPI. |
+| `GET` | `/api/admin/feedback/faculty` | Admin-authenticated alias for faculty-wise feedback. |
+| `GET` | `/api/admin/feedback/summary` | Admin-authenticated alias for the feedback summary. |
+| `GET` | `/api/admin/feedback/departments` | Admin-authenticated department-wise average ratings and response counts. |
+| `GET` | `/api/admin/feedback/ratings` | Admin-authenticated rating average, valid-rating count, and 0–10 distribution. |
+
+The public student portal is available at `/feedback`; the administrator feedback view is `/feedback/view`. From the Student Feedback Improvement KPI, an administrator selects a faculty member and academic year, specifies a batch size, and downloads a CSV containing unique single-use codes for private distribution. The plaintext codes are generated with a cryptographically secure random generator, returned only in that download, and never stored in the database. Only SHA-256 token hashes are persisted. Do not retain or publicly share the downloaded CSV.
+
+The existing `student_feedback` table is migrated in place to include faculty and department foreign keys, academic year, subject, ratings (0–10), comments, a unique token reference, and submission time. Legacy feedback columns and values are retained for existing KPI compatibility. The `anonymous_feedback_tokens` table stores a unique token hash, faculty/year scope, used state, and timestamps; a unique feedback token reference and transactional one-time redemption prevent a code from submitting multiple responses. Feedback records do not contain student identifiers or plaintext codes. Existing legacy code-issuance hashes are migrated into the token table before the old issuance table is removed. Initialization is repeatable and does not create another database.
+
+All `/api/admin/feedback/*` routes require the existing bearer-token administrator authentication. Public feedback reads are limited to 120 requests per IP per minute, token validation to 10, and submission to 5; these limits are per running API process. The public submission body accepts `feedback_code`, `faculty_id`, `department_id`, `academic_year`, `subject`, the four rating fields, `overall_rating`, and optional `comments`; each rating is validated in the 0–10 range. For example:
+
+```json
+{
+  "feedback_code": "one-time-code-from-the-private-export",
+  "faculty_id": "FACULTY_ID",
+  "department_id": 1,
+  "academic_year": "2025-2026",
+  "subject": "Course name",
+  "teaching_quality": 8,
+  "subject_knowledge": 9,
+  "communication_skills": 8,
+  "student_interaction": 9,
+  "overall_rating": 9,
+  "comments": "Optional anonymous feedback"
+}
+```
+
+Legacy feedback without an academic year or a valid faculty association is reported separately and excluded from faculty rating calculations. Faculty and department averages use valid 0–10 overall ratings only. The administrator feedback endpoint is read-only and exposes no edit/delete operations.
 
 ---
 

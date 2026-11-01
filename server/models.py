@@ -1,6 +1,16 @@
 from datetime import datetime
 import json
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from database import Base
 
 
@@ -170,16 +180,49 @@ class KPI(Base):
 
 class StudentFeedback(Base):
     __tablename__ = "student_feedback"
+    __table_args__ = (
+        CheckConstraint("teaching_quality IS NULL OR teaching_quality BETWEEN 0 AND 10"),
+        CheckConstraint("subject_knowledge IS NULL OR subject_knowledge BETWEEN 0 AND 10"),
+        CheckConstraint("communication_skills IS NULL OR communication_skills BETWEEN 0 AND 10"),
+        CheckConstraint("student_interaction IS NULL OR student_interaction BETWEEN 0 AND 10"),
+        CheckConstraint("overall_rating IS NULL OR overall_rating BETWEEN 0 AND 10"),
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    faculty_id = Column(String, ForeignKey("faculty.faculty_id"), nullable=True, index=True)
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True, index=True)
     academic_year = Column(String, nullable=False, index=True)
-    department = Column(String, nullable=False, index=True)
-    teaching_quality = Column(Integer, nullable=False)
-    course_content = Column(Integer, nullable=False)
-    learning_resources = Column(Integer, nullable=False)
-    faculty_support = Column(Integer, nullable=False)
-    overall_satisfaction = Column(Integer, nullable=False)
+    subject = Column(String, nullable=True)
+    teaching_quality = Column(Integer, nullable=True)
+    subject_knowledge = Column(Integer, nullable=True)
+    communication_skills = Column(Integer, nullable=True)
+    student_interaction = Column(Integer, nullable=True)
+    overall_rating = Column(Integer, nullable=True)
+    comments = Column(Text, nullable=True)
+    token_id = Column(Integer, ForeignKey("anonymous_feedback_tokens.id"), nullable=True, unique=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    department = Column(String, nullable=True, index=True)
+    faculty_rating = Column(Integer, nullable=True)
+    course_content = Column(Integer, nullable=True)
+    learning_resources = Column(Integer, nullable=True)
+    faculty_support = Column(Integer, nullable=True)
+    overall_satisfaction = Column(Integer, nullable=True)
     comment = Column(Text, nullable=True)
+
+
+class AnonymousFeedbackToken(Base):
+    __tablename__ = "anonymous_feedback_tokens"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_anonymous_feedback_token_hash"),
+        CheckConstraint("used IN (0, 1)"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    token_hash = Column(String, nullable=False)
+    faculty_id = Column(String, ForeignKey("faculty.faculty_id"), nullable=False, index=True)
+    academic_year = Column(String, nullable=False, index=True)
+    used = Column(Integer, nullable=False, default=0)
+    used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 

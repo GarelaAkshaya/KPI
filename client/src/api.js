@@ -102,3 +102,23 @@ export async function apiFetch(url, options = {}) {
 
   return response;
 }
+
+export async function apiPublicFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const primaryUrl = resolveUrl(url);
+  try {
+    return await fetch(primaryUrl, { ...options, headers });
+  } catch (error) {
+    const altUrl = getAlternateUrl(primaryUrl);
+    if (!altUrl) throw error;
+
+    const response = await fetch(altUrl, { ...options, headers });
+    const newBase = altUrl.includes(':5001') ? 'http://localhost:5001' : 'http://localhost:5000';
+    setActiveApiBase(newBase);
+    return response;
+  }
+}
