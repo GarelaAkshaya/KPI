@@ -51,12 +51,19 @@ const getSubjectLabel = (subject) => {
 
 const isNonSubjectColumn = (subject) => /^s\.?\s*no\.?$/i.test(String(subject).trim());
 
-export default function StudentAttendanceKPI({ academicYear = '2024-2025', department, section, onAcademicYearChange }) {
+export default function StudentAttendanceKPI({ academicYear = '2024-2025', department, section, semester, onAcademicYearChange, onSemesterChange }) {
   const [internalYear, setInternalYear] = useState(academicYear);
+  const [selectedSemester, setSelectedSemester] = useState(semester || 'All');
 
   useEffect(() => {
     setInternalYear(academicYear);
   }, [academicYear]);
+
+  useEffect(() => {
+    if (semester !== undefined) {
+      setSelectedSemester(semester || 'All');
+    }
+  }, [semester]);
 
   const activeYear = internalYear || academicYear;
   const [attendanceData, setAttendanceData] = useState([]);
@@ -68,12 +75,18 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
   const [hoveredCompare, setHoveredCompare] = useState(null);
   const [showTable, setShowTable] = useState(false);
 
-  // Fetch live attendance data for the selected academic year
+  // Fetch live attendance data for the selected academic year and semester
   useEffect(() => {
     async function fetchAttendance() {
       setIsLoading(true);
       try {
-        const queryParam = `?${new URLSearchParams({ academic_year: activeYear, ...(selectedDept ? { department: selectedDept } : {}), ...(section ? { section } : {}) })}`;
+        const queryParams = new URLSearchParams({
+          academic_year: activeYear,
+          ...(selectedDept ? { department: selectedDept } : {}),
+          ...(section ? { section } : {}),
+          ...(selectedSemester && selectedSemester !== 'All' ? { semester: selectedSemester } : {})
+        });
+        const queryParam = `?${queryParams.toString()}`;
         const res = await apiFetch(`${API_BASE_URL}/api/attendance${queryParam}`);
         if (res.ok) {
           const data = await res.json();
@@ -88,7 +101,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
       }
     }
     fetchAttendance();
-  }, [activeYear, selectedDept, section]);
+  }, [activeYear, selectedDept, section, selectedSemester]);
 
   // Filter list by selected department and academic year
   const filteredData = useMemo(() => {
@@ -284,7 +297,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
                   <BarChart3 className="w-3.5 h-3.5" />
                   Key Performance Indicator
                 </span>
-                <span className="text-xs font-semibold text-slate-500">• Academic Year {activeYear}</span>
+                <span className="text-xs font-semibold text-slate-500">• Academic Year {activeYear}{selectedSemester !== 'All' ? ` • ${selectedSemester}` : ''}</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
                 <span>Student Attendance KPI</span>
@@ -295,7 +308,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
               </p>
             </div>
 
-            {/* Department & Academic Year Filters */}
+            {/* Department, Academic Year, Semester & Section Filters */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs">
                 <Calendar className="w-4 h-4 text-blue-600" />
@@ -313,6 +326,26 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
                   <option value="2025-2026">2025-2026</option>
                 </select>
               </div>
+
+              <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700">
+                <Layers className="w-4 h-4 text-blue-600" />
+                <span>Semester:</span>
+                <select
+                  value={selectedSemester}
+                  onChange={(e) => {
+                    const newSem = e.target.value;
+                    setSelectedSemester(newSem);
+                    if (onSemesterChange) onSemesterChange(newSem);
+                  }}
+                  className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="All">All Semesters</option>
+                  {Array.from({ length: 8 }, (_, i) => `Semester ${i + 1}`).map((sem) => (
+                    <option key={sem} value={sem}>{sem}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs">
                 <Filter className="w-4 h-4 text-blue-600" />
                 <span className="text-xs font-bold text-slate-700">Section:</span>
@@ -321,7 +354,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
 
               <button
                 onClick={() => setShowTable(!showTable)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all duration-200 bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 shadow-xs"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all duration-200 bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 shadow-xs cursor-pointer"
               >
                 <Layers className="w-3.5 h-3.5 text-blue-600" />
                 <span>{showTable ? 'Hide Records' : 'View Records Table'}</span>
@@ -334,9 +367,11 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
               <div className="mx-auto w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
                 <Calendar className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-slate-800">No Attendance Records for Academic Year {activeYear}</h3>
+              <h3 className="text-base font-bold text-slate-800">
+                No Attendance Records for Academic Year {activeYear} {selectedSemester !== 'All' ? `(${selectedSemester})` : ''}
+              </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                There are currently no student attendance records in the database for the {activeYear} academic session. Upload an attendance sheet for {activeYear} to view live KPI analytics.
+                There are currently no student attendance records in the database for the {activeYear} academic session {selectedSemester !== 'All' ? `for ${selectedSemester}` : ''}. Upload an attendance sheet for {activeYear} to view live KPI analytics.
               </p>
             </div>
           )}
@@ -518,6 +553,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
                   <th className="p-3">Enrollment Number</th>
                   <th className="p-3">Student Name</th>
                   <th className="p-3">Department</th>
+                  <th className="p-3">Semester</th>
                   <th className="p-3">Total Classes</th>
                   <th className="p-3">Attended</th>
                   <th className="p-3">Attendance %</th>
@@ -534,6 +570,7 @@ export default function StudentAttendanceKPI({ academicYear = '2024-2025', depar
                       <td className="p-3 font-bold text-slate-900">{item.enrollment_number || item.student_id}</td>
                       <td className="p-3 text-slate-800">{item.student_name}</td>
                       <td className="p-3 text-slate-600">{item.department}</td>
+                      <td className="p-3 text-slate-700 font-semibold">{item.semester || '—'}</td>
                       <td className="p-3 text-slate-700">{item.total_classes}</td>
                       <td className="p-3 font-semibold text-slate-900">{item.attended_classes}</td>
                       <td className="p-3 font-black text-slate-900">{pct}%</td>

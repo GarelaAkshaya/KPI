@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
-import { 
-  ArrowLeft, 
-  FileSpreadsheet, 
-  UploadCloud, 
-  CheckCircle2, 
-  AlertCircle, 
-  CalendarCheck, 
-  GraduationCap, 
+import {
+  ArrowLeft,
+  FileSpreadsheet,
+  UploadCloud,
+  CheckCircle2,
+  AlertCircle,
+  Calendar,
+  CalendarCheck,
+  GraduationCap,
   Info,
   Layers,
   Check,
@@ -41,6 +42,7 @@ export default function StudentUploadPage() {
   const [marksDepartment, setMarksDepartment] = useState('');
   const [marksSection, setMarksSection] = useState('');
   const [marksSemester, setMarksSemester] = useState('Semester 1');
+  const [marksSubject, setMarksSubject] = useState('');
   const [marksFilterYear, setMarksFilterYear] = useState('All');
   const [marksFilterSemester, setMarksFilterSemester] = useState('All');
   const [marksFilterDepartment, setMarksFilterDepartment] = useState('All');
@@ -94,6 +96,12 @@ export default function StudentUploadPage() {
       return;
     }
 
+    if (!marksSubject || !marksSubject.trim()) {
+      setMarksStatus('error');
+      setMarksMessage('Subject Name is required. Please enter the subject name before uploading.');
+      return;
+    }
+
     setIsUploadingMarks(true);
     setMarksStatus('idle');
     setMarksMessage('');
@@ -104,6 +112,8 @@ export default function StudentUploadPage() {
     formData.append('department', marksDepartment);
     formData.append('section', marksSection);
     formData.append('semester', marksSemester);
+    formData.append('subject', marksSubject.trim());
+    formData.append('subject_name', marksSubject.trim());
 
     try {
       const response = await apiFetch(`${API_BASE_URL}/api/upload-students`, {
@@ -126,6 +136,7 @@ export default function StudentUploadPage() {
       setMarksAcademicYear('');
       setMarksDepartment('');
       setMarksSection('');
+      setMarksSubject('');
       const fileInput = document.getElementById('marks-file-input');
       if (fileInput) fileInput.value = '';
     } catch (error) {
@@ -168,6 +179,12 @@ export default function StudentUploadPage() {
       return;
     }
 
+    if (!marksSubject || !marksSubject.trim()) {
+      setMarksStatus('error');
+      setMarksMessage('Subject Name is required before previewing.');
+      return;
+    }
+
     setIsPreviewingMarks(true);
     setMarksStatus('idle');
     setMarksMessage('');
@@ -178,6 +195,8 @@ export default function StudentUploadPage() {
     formData.append('department', marksDepartment);
     formData.append('section', marksSection);
     formData.append('semester', marksSemester);
+    formData.append('subject', marksSubject.trim());
+    formData.append('subject_name', marksSubject.trim());
 
     try {
       const response = await apiFetch(`${API_BASE_URL}/api/preview-student-marks`, {
@@ -205,9 +224,11 @@ export default function StudentUploadPage() {
   // Student Attendance Upload State
   const [selectedAttendanceFile, setSelectedAttendanceFile] = useState(null);
   const [attendanceAcademicYear, setAttendanceAcademicYear] = useState('');
+  const [attendanceSemester, setAttendanceSemester] = useState('');
   const [attendanceDepartment, setAttendanceDepartment] = useState('');
   const [attendanceSection, setAttendanceSection] = useState('');
   const [attendanceFilterYear, setAttendanceFilterYear] = useState('All');
+  const [attendanceFilterSemester, setAttendanceFilterSemester] = useState('All');
   const [attendanceFilterDepartment, setAttendanceFilterDepartment] = useState('All');
   const [attendanceFilterSection, setAttendanceFilterSection] = useState('All');
   const [isUploadingAttendance, setIsUploadingAttendance] = useState(false);
@@ -237,6 +258,12 @@ export default function StudentUploadPage() {
       return;
     }
 
+    if (!attendanceSemester) {
+      setAttendanceStatus('error');
+      setAttendanceMessage('Semester is required. Please select a Semester before uploading.');
+      return;
+    }
+
     if (!attendanceDepartment) {
       setAttendanceStatus('error');
       setAttendanceMessage('Department is required. Please select the department for this upload.');
@@ -256,6 +283,7 @@ export default function StudentUploadPage() {
     const formData = new FormData();
     formData.append('file', selectedAttendanceFile);
     formData.append('academic_year', attendanceAcademicYear);
+    formData.append('semester', attendanceSemester);
     formData.append('department', attendanceDepartment);
     formData.append('section', attendanceSection);
 
@@ -281,6 +309,7 @@ export default function StudentUploadPage() {
       await fetchAttendance();
       setSelectedAttendanceFile(null);
       setAttendanceAcademicYear('');
+      setAttendanceSemester('');
       setAttendanceDepartment('');
       setAttendanceSection('');
       event.target.reset();
@@ -366,7 +395,7 @@ export default function StudentUploadPage() {
   }
 
   // Filtered views for tables
-  const departmentOptions = ['Computer Science and Engineering', 'AI & Data Science'];
+  const departmentOptions = ['Computer Science and Engineering', 'AI & Data Science', 'BCA'];
 
   const filteredStudents = React.useMemo(() => {
     return students.filter((s) => {
@@ -383,9 +412,10 @@ export default function StudentUploadPage() {
       const yearMatches = attendanceFilterYear === 'All' || (a.academic_year || a.academicYear) === attendanceFilterYear;
       const departmentMatches = attendanceFilterDepartment === 'All' || (a.department || '').trim() === attendanceFilterDepartment;
       const sectionMatches = attendanceFilterSection === 'All' || (a.section || '').trim().toUpperCase() === attendanceFilterSection.toUpperCase();
-      return yearMatches && departmentMatches && sectionMatches;
+      const semesterMatches = attendanceFilterSemester === 'All' || (a.semester || '') === attendanceFilterSemester;
+      return yearMatches && departmentMatches && sectionMatches && semesterMatches;
     });
-  }, [attendanceList, attendanceFilterYear, attendanceFilterDepartment, attendanceFilterSection]);
+  }, [attendanceList, attendanceFilterYear, attendanceFilterDepartment, attendanceFilterSection, attendanceFilterSemester]);
 
   const toggleMarksTable = async () => {
     const willShow = !showMarksTable;
@@ -427,11 +457,10 @@ export default function StudentUploadPage() {
         <div className="flex items-center gap-3 mb-6 p-1.5 bg-[#E2E8F0]/60 rounded-2xl w-fit">
           <button
             onClick={() => setActiveTab('marks')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition ${
-              activeTab === 'marks'
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition ${activeTab === 'marks'
                 ? 'bg-white text-[#2563EB] shadow-sm'
                 : 'text-[#64748B] hover:text-[#1E293B]'
-            }`}
+              }`}
           >
             <GraduationCap className="w-4 h-4" />
             Student Marks Upload
@@ -439,11 +468,10 @@ export default function StudentUploadPage() {
 
           <button
             onClick={() => setActiveTab('attendance')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition ${
-              activeTab === 'attendance'
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition ${activeTab === 'attendance'
                 ? 'bg-white text-[#2563EB] shadow-sm'
                 : 'text-[#64748B] hover:text-[#1E293B]'
-            }`}
+              }`}
           >
             <CalendarCheck className="w-4 h-4" />
             Student Attendance Upload
@@ -467,8 +495,8 @@ export default function StudentUploadPage() {
               </div>
 
               <form onSubmit={handleMarksSubmit} className="space-y-6">
-                {/* Department, Year, Section, Semester Controls Grid */}
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {/* Department, Year, Section, Semester, Subject Controls Grid */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                   {/* Department Selection */}
                   <div className="space-y-2">
                     <label htmlFor="marks-department" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
@@ -554,6 +582,22 @@ export default function StudentUploadPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Subject Name Input (Mandatory text input) */}
+                  <div className="space-y-2">
+                    <label htmlFor="marks-subject" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                      Subject Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      id="marks-subject"
+                      type="text"
+                      required
+                      value={marksSubject}
+                      onChange={(event) => setMarksSubject(event.target.value)}
+                      placeholder="e.g. OOPS, DBMS"
+                      className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#2563EB]/40 focus:border-[#2563EB] focus:bg-[#FFFFFF] transition"
+                    />
+                  </div>
                 </div>
 
                 {/* Semester Subject Guidance Card */}
@@ -561,13 +605,24 @@ export default function StudentUploadPage() {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2 font-bold text-[#1E293B]">
                       <BookOpen className="w-4 h-4 text-[#2563EB]" />
-                      <span>{marksSemester} Subjects (Worksheet Names):</span>
+                      <span>
+                        {marksSubject.trim() ? (
+                          <>Subject: <span className="text-[#2563EB] font-black">{marksSubject.trim()}</span> ({marksSemester})</>
+                        ) : (
+                          <>{marksSemester} Subjects (Worksheet Names):</>
+                        )}
+                      </span>
                     </div>
                     <span className="text-[#64748B]">Format: S#, Enrolno, Name, Test 1 (15), Lab-1 (15), Test 2 (15), Lab-2 (15), Compre (40), Total (100)</span>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {(DEFAULT_SEMESTER_CONFIG[marksSemester] || []).length > 0 ? (
+                    {marksSubject.trim() ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-[#2563EB] text-[#1E40AF] font-bold text-xs shadow-xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#2563EB]" />
+                        Active Subject: {marksSubject.trim()}
+                      </span>
+                    ) : (DEFAULT_SEMESTER_CONFIG[marksSemester] || []).length > 0 ? (
                       (DEFAULT_SEMESTER_CONFIG[marksSemester] || []).map((sub) => (
                         <span
                           key={sub}
@@ -580,7 +635,7 @@ export default function StudentUploadPage() {
                     ) : (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white border border-amber-300 text-amber-800 font-semibold text-xs">
                         <Info className="w-3.5 h-3.5 text-amber-600" />
-                        Semester 4 subjects are configurable: all worksheet tabs will be dynamically identified as subjects.
+                        Type the subject name in the Subject Name input field above.
                       </span>
                     )}
                   </div>
@@ -668,11 +723,10 @@ export default function StudentUploadPage() {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h2 className="text-xl font-bold text-[#1E293B]">Workbook Validation & Preview</h2>
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          previewData.valid 
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${previewData.valid
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                             : 'bg-rose-100 text-rose-800 border border-rose-300'
-                        }`}>
+                          }`}>
                           {previewData.valid ? 'Validation Passed' : 'Validation Errors'}
                         </span>
                       </div>
@@ -762,16 +816,14 @@ export default function StudentUploadPage() {
                               key={sheet.sheet_name || idx}
                               type="button"
                               onClick={() => setPreviewActiveTab(idx)}
-                              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 border cursor-pointer ${
-                                previewActiveTab === idx
+                              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 border cursor-pointer ${previewActiveTab === idx
                                   ? 'bg-[#2563EB] text-white border-[#2563EB] shadow-xs'
                                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                              }`}
+                                }`}
                             >
                               <span>{sheet.subject_name || sheet.sheet_name}</span>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                                previewActiveTab === idx ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                              }`}>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${previewActiveTab === idx ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                                }`}>
                                 {sheet.valid_rows ?? sheet.total_rows}
                               </span>
                             </button>
@@ -1008,27 +1060,62 @@ export default function StudentUploadPage() {
               </div>
 
               <form onSubmit={handleAttendanceSubmit} className="space-y-5">
-                {/* Academic Year Selection */}
-                <div className="space-y-2">
-                  <label htmlFor="attendance-academic-year" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
-                    Academic Year <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="attendance-academic-year"
-                      required
-                      value={attendanceAcademicYear}
-                      onChange={(event) => setAttendanceAcademicYear(event.target.value)}
-                      className="w-full appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 pr-10 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 focus:border-[#16A34A] focus:bg-[#FFFFFF] transition cursor-pointer"
-                    >
-                      <option value="" disabled>Select Academic Year</option>
-                      <option value="2024-2025">2024-2025</option>
-                      <option value="2025-2026">2025-2026</option>
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-[#64748B]">
-                      <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
-                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                      </svg>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {/* Academic Year Selection */}
+                  <div className="space-y-2">
+                    <label htmlFor="attendance-academic-year" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-[#16A34A]" />
+                      Academic Year <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="attendance-academic-year"
+                        required
+                        value={attendanceAcademicYear}
+                        onChange={(event) => setAttendanceAcademicYear(event.target.value)}
+                        className="w-full appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 pr-10 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 focus:border-[#16A34A] focus:bg-[#FFFFFF] transition cursor-pointer"
+                      >
+                        <option value="" disabled>Select Academic Year</option>
+                        <option value="2024-2025">2024-2025</option>
+                        <option value="2025-2026">2025-2026</option>
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-[#64748B]">
+                        <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
+                          <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Semester Selection */}
+                  <div className="space-y-2">
+                    <label htmlFor="attendance-semester" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-[#16A34A]" />
+                      Semester <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="attendance-semester"
+                        required
+                        value={attendanceSemester}
+                        onChange={(event) => setAttendanceSemester(event.target.value)}
+                        className="w-full appearance-none bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3 pr-10 text-[#1E293B] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 focus:border-[#16A34A] focus:bg-[#FFFFFF] transition cursor-pointer"
+                      >
+                        <option value="" disabled>Select Semester</option>
+                        <option value="Semester 1">Semester 1</option>
+                        <option value="Semester 2">Semester 2</option>
+                        <option value="Semester 3">Semester 3</option>
+                        <option value="Semester 4">Semester 4</option>
+                        <option value="Semester 5">Semester 5</option>
+                        <option value="Semester 6">Semester 6</option>
+                        <option value="Semester 7">Semester 7</option>
+                        <option value="Semester 8">Semester 8</option>
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-[#64748B]">
+                        <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
+                          <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1112,7 +1199,21 @@ export default function StudentUploadPage() {
                     <div className="rounded-lg bg-[#F0FDF4] border border-[#DCFCE7] px-4 py-2.5 text-sm text-[#1E293B]">
                       <span className="text-[#64748B]">Showing Records: </span>
                       <span className="font-semibold text-[#16A34A]">{filteredAttendance.length}</span>
-                      <span className="text-xs text-[#64748B] ml-2">({attendanceFilterYear === 'All' ? 'All Years' : attendanceFilterYear})</span>
+                      <span className="text-xs text-[#64748B] ml-2">({attendanceFilterYear === 'All' ? 'All Years' : attendanceFilterYear} • {attendanceFilterSemester === 'All' ? 'All Semesters' : attendanceFilterSemester})</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs">
+                      <span className="text-[#64748B] font-semibold">Semester:</span>
+                      <select
+                        value={attendanceFilterSemester}
+                        onChange={(e) => setAttendanceFilterSemester(e.target.value)}
+                        className="bg-transparent font-bold text-[#1E293B] focus:outline-none cursor-pointer"
+                      >
+                        <option value="All">All Semesters</option>
+                        {Array.from({ length: 8 }, (_, i) => `Semester ${i + 1}`).map((sem) => (
+                          <option key={sem} value={sem}>{sem}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-3 py-1.5 text-xs">

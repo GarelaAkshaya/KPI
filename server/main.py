@@ -12,6 +12,7 @@ import schemas
 import services
 
 VALID_ACADEMIC_YEARS = {"2024-2025", "2025-2026"}
+VALID_SEMESTERS = {f"Semester {i}" for i in range(1, 9)}
 
 # Create database tables automatically and apply any missing column migrations
 database.init_db()
@@ -262,17 +263,68 @@ def get_pass_percentage_kpi(
     department: Optional[str] = None,
     section: Optional[str] = None,
     semester: Optional[str] = None,
+    subject: Optional[str] = None,
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
     try:
         norm_year = services.normalize_academic_year(academic_year) or "2024-2025"
-        return services.get_pass_percentage_kpi(db, academic_year=norm_year, department=department, section=section, semester=semester)
+        return services.get_pass_percentage_kpi(
+            db,
+            academic_year=norm_year,
+            department=department,
+            section=section,
+            semester=semester,
+            subject=subject,
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to calculate pass percentage KPI: {str(e)}"
         )
+
+
+@app.get("/api/marks/subjects", response_model=List[str])
+def get_marks_subjects(
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+    semester: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    _: models.AdminUser = Depends(get_current_admin),
+):
+    try:
+        return services.get_marks_subjects(
+            db=db,
+            academic_year=academic_year,
+            department=department,
+            section=section,
+            semester=semester,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch subjects: {str(e)}"
+        )
+
+
+@app.get("/api/filters/subjects", response_model=List[str])
+def get_filters_subjects(
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+    semester: Optional[str] = None,
+    db: Session = Depends(database.get_db),
+    admin: models.AdminUser = Depends(get_current_admin),
+):
+    return get_marks_subjects(
+        academic_year=academic_year,
+        department=department,
+        section=section,
+        semester=semester,
+        db=db,
+        _=admin,
+    )
 
 
 # Stored KPI Endpoints
@@ -377,10 +429,17 @@ def get_department_overview(db: Session = Depends(database.get_db), _: models.Ad
 def get_filter_sections(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
+    semester: Optional[str] = None,
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
-    return services.get_available_sections(db, academic_year=services.normalize_academic_year(academic_year), department=department)
+    norm_year = None
+    if academic_year:
+        try:
+            norm_year = services.normalize_academic_year(academic_year)
+        except ValueError:
+            norm_year = None
+    return services.get_available_sections(db, academic_year=norm_year, department=department, semester=semester)
 
 
 @app.post("/api/departments", response_model=schemas.DepartmentSchema, status_code=status.HTTP_201_CREATED)
@@ -400,12 +459,13 @@ def get_attendance(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
     try:
         norm_year = services.normalize_academic_year(academic_year)
-        return services.get_all_attendance(db, academic_year=norm_year, department=department, section=section)
+        return services.get_all_attendance(db, academic_year=norm_year, department=department, section=section, semester=semester)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -418,12 +478,13 @@ def get_attendance_subjects(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
     try:
         norm_year = services.normalize_academic_year(academic_year)
-        return services.get_attendance_subjects(db, academic_year=norm_year, department=department, section=section)
+        return services.get_attendance_subjects(db, academic_year=norm_year, department=department, section=section, semester=semester)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve attendance subjects: {str(e)}")
 
@@ -433,12 +494,13 @@ def get_attendance_kpi(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
     try:
         norm_year = services.normalize_academic_year(academic_year)
-        return services.get_attendance_kpi(db, academic_year=norm_year, department=department, section=section)
+        return services.get_attendance_kpi(db, academic_year=norm_year, department=department, section=section, semester=semester)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve attendance KPI: {str(e)}")
 
@@ -485,6 +547,8 @@ async def preview_student_marks(
     department: Optional[str] = Form(None),
     section: Optional[str] = Form(None),
     semester: Optional[str] = Form(None),
+    subject: Optional[str] = Form(None),
+    subject_name: Optional[str] = Form(None),
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
@@ -492,6 +556,7 @@ async def preview_student_marks(
     selected_department = (department or "").strip()
     selected_section = (section or "").strip()
     selected_semester = (semester or "").strip()
+    selected_subject = (subject or subject_name or "").strip()
 
     if not selected_year:
         raise HTTPException(status_code=400, detail="Academic Year is required. Please select an academic year.")
@@ -501,6 +566,8 @@ async def preview_student_marks(
         raise HTTPException(status_code=400, detail="Section is required.")
     if not selected_semester:
         raise HTTPException(status_code=400, detail="Semester is required. Please select Semester 1, 2, 3 or 4.")
+    if not selected_subject:
+        raise HTTPException(status_code=400, detail="Subject Name is required. Please type the subject name.")
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="Please select an Excel file.")
 
@@ -516,6 +583,7 @@ async def preview_student_marks(
             department=selected_department,
             section=selected_section,
             semester=selected_semester,
+            subject=selected_subject,
         )
         return preview_data
     except ValueError as ve:
@@ -557,12 +625,17 @@ async def upload_students(
     department: Optional[str] = Form(None),
     section: Optional[str] = Form(None),
     semester: Optional[str] = Form(None),
+    subject: Optional[str] = Form(None),
+    subject_name: Optional[str] = Form(None),
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
     selected_year = (academic_year or academicYear or "").strip()
     selected_department = (department or "").strip()
     selected_section = (section or "").strip()
+    selected_semester = (semester or "").strip()
+    selected_subject = (subject or subject_name or "").strip()
+
     if not selected_year:
         return JSONResponse(
             status_code=400,
@@ -582,13 +655,36 @@ async def upload_students(
             content={"message": "Invalid Academic Year. Only '2024-2025' and '2025-2026' are accepted."}
         )
 
+    if not selected_department:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Department is required. Please select a department."}
+        )
+
+    if not selected_section:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Section is required. Please enter a section."}
+        )
+
+    if not selected_semester:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Semester is required. Please select a semester."}
+        )
+
+    if not selected_subject:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Subject Name is required. Please type the subject name."}
+        )
+
     if not file or not file.filename:
         return JSONResponse(
             status_code=400,
             content={"message": "Please upload a file."}
         )
 
-    selected_semester = (semester or "").strip()
     try:
         contents = await file.read()
         if not contents:
@@ -597,8 +693,8 @@ async def upload_students(
                 content={"message": "Uploaded file is empty."}
             )
 
-        # Multi-worksheet semester workbook upload
-        if selected_semester or services.is_semester_workbook(contents):
+        # Multi-worksheet or single-subject semester workbook upload
+        if selected_semester or selected_subject or services.is_semester_workbook(contents):
             target_sem = selected_semester or "Semester 1"
             preview_data = services.parse_semester_workbook_for_preview(
                 file_contents=contents,
@@ -607,6 +703,7 @@ async def upload_students(
                 department=selected_department,
                 section=selected_section,
                 semester=target_sem,
+                subject=selected_subject,
             )
             if not preview_data.get("valid"):
                 return JSONResponse(
@@ -630,6 +727,8 @@ async def upload_students(
                 "count": result["count"],
                 "students": result["students"],
                 "subjects": result["subjects"],
+                "subject": selected_subject,
+                "subject_name": selected_subject,
                 "subject_names": result["subject_names"],
                 "academic_year": norm_year,
                 "academicYear": norm_year,
@@ -685,12 +784,15 @@ async def upload_attendance(
     academicYear: Optional[str] = Form(None),
     department: Optional[str] = Form(None),
     section: Optional[str] = Form(None),
+    semester: Optional[str] = Form(None),
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
     selected_year = (academic_year or academicYear or "").strip()
     selected_department = (department or "").strip()
     selected_section = (section or "").strip()
+    selected_semester = (semester or "").strip()
+
     if not selected_year:
         return JSONResponse(
             status_code=400,
@@ -708,6 +810,19 @@ async def upload_attendance(
         return JSONResponse(
             status_code=400,
             content={"message": "Invalid Academic Year. Only '2024-2025' and '2025-2026' are accepted."}
+        )
+
+    if not selected_semester:
+        return JSONResponse(
+            status_code=400,
+            content={"message": "Semester is required. Please select a semester."}
+        )
+
+    norm_sem = services.normalize_semester(selected_semester)
+    if norm_sem not in VALID_SEMESTERS:
+        return JSONResponse(
+            status_code=400,
+            content={"message": f"Invalid Semester '{selected_semester}'. Must be one of Semester 1 to Semester 8."}
         )
 
     if not file or not file.filename:
@@ -730,6 +845,7 @@ async def upload_attendance(
             academic_year=norm_year,
             department=selected_department,
             section=selected_section,
+            semester=norm_sem,
         )
 
         if not records:
@@ -744,7 +860,7 @@ async def upload_attendance(
                 content={"message": "One or more rows are missing an enrollment number."}
             )
 
-        records, unmatched_enrollments = services.match_attendance_students(db, records, academic_year=norm_year)
+        records, unmatched_enrollments = services.match_attendance_students(db, records, academic_year=norm_year, semester=norm_sem)
         if unmatched_enrollments:
             return JSONResponse(
                 status_code=400,
@@ -754,17 +870,18 @@ async def upload_attendance(
                 }
             )
 
-        saved_count = services.save_attendance_records(db, records, academic_year=norm_year)
+        saved_count = services.save_attendance_records(db, records, academic_year=norm_year, semester=norm_sem)
 
         return {
-            "message": f"Student attendance uploaded successfully for academic year {norm_year}.",
+            "message": f"Student attendance uploaded successfully for academic year {norm_year} ({norm_sem}).",
             "count": saved_count,
             "students": saved_count,
             "subjects": len(subject_names),
             "subject_names": subject_names,
-            "average_attendance": services.get_attendance_kpi(db, academic_year=norm_year)['overall_average_attendance'],
+            "average_attendance": services.get_attendance_kpi(db, academic_year=norm_year, department=selected_department, section=selected_section, semester=norm_sem)['overall_average_attendance'],
             "academic_year": norm_year,
-            "academicYear": norm_year
+            "academicYear": norm_year,
+            "semester": norm_sem
         }
     except ValueError as ve:
         return JSONResponse(

@@ -192,6 +192,7 @@ class StudentAttendance(Base):
     student_name = Column(String, nullable=False)
     department = Column(String, nullable=False)
     section = Column(String, nullable=True, default=None)
+    semester = Column(String, nullable=True, default=None, index=True)
     academic_year = Column(String, nullable=False)
     total_classes = Column(Integer, nullable=False, default=0)
     attended_classes = Column(Integer, nullable=False, default=0)

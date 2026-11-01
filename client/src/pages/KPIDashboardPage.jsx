@@ -4,13 +4,13 @@ import StudentAttendanceKPI from '../components/StudentAttendanceKPI';
 import PassPercentageKPI from '../components/PassPercentageKPI';
 import StudentFeedbackKPI from '../components/StudentFeedbackKPI';
 import { useLocation } from 'react-router-dom';
-import { BarChart3, Calendar, Filter, AreaChart, PieChart, Layers, ArrowUpRight, Info, Users, UserRound, Database, FileText, Settings, Bell, Home, Upload, SlidersHorizontal } from 'lucide-react';
+import { BarChart3, Calendar, Filter, AreaChart, PieChart, Layers, ArrowUpRight, Info, Users, UserRound, Database, FileText, SlidersHorizontal } from 'lucide-react';
 import { API_BASE_URL, apiFetch } from '../api';
 
 export default function KPIDashboardPage() {
   const location = useLocation();
   const [selectedKPI, setSelectedKPI] = useState(location.state?.selectedKPI || 'Student Attendance');
-  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2025-2026');
   const [selectedSection, setSelectedSection] = useState('');
   const [sectionOptions, setSectionOptions] = useState([]);
   const [laboratoryUtilizationRows, setLaboratoryUtilizationRows] = useState([]);
@@ -150,8 +150,8 @@ export default function KPIDashboardPage() {
   ];
 
   const yearOptions = [
-    '2024-2025',
     '2025-2026',
+    '2024-2025',
   ];
 
   const utilizationPercentage = (capacity, studentsPresent) => {
@@ -173,7 +173,6 @@ export default function KPIDashboardPage() {
     { label: 'Highest Utilized Laboratory', value: laboratoryUtilizationSummary.highestUtilizedLaboratory?.laboratoryName || 'N/A', caption: `${laboratoryUtilizationSummary.highestUtilizedLaboratory?.utilization || 0}% peak usage` },
   ];
 
-  const isRatioPage = selectedKPI === 'Student-Faculty Ratio';
   const ratioStudents = Number(ratioData?.totalStudents || 0);
   const ratioFaculty = Number(ratioData?.totalFaculty || 0);
   const ratioTotal = ratioStudents + ratioFaculty;
@@ -188,32 +187,7 @@ export default function KPIDashboardPage() {
       <Navbar />
 
       {/* Main Container */}
-      <main className={`flex-1 w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 ${isRatioPage ? 'max-w-[1440px] xl:pl-52' : 'max-w-7xl'}`}>
-        {isRatioPage && (
-          <aside className="hidden xl:flex fixed left-4 top-28 w-40 flex-col gap-2" aria-label="Dashboard navigation">
-            {[
-              { label: 'Home', icon: Home },
-              { label: 'Dashboard', icon: BarChart3 },
-              { label: 'KPI Dashboard', icon: SlidersHorizontal, active: true },
-              { label: 'Data Upload', icon: Upload },
-              { label: 'Data Management', icon: Database },
-              { label: 'Reports', icon: FileText },
-              { label: 'Alerts & Notifications', icon: Bell },
-              { label: 'Settings', icon: Settings },
-            ].map(({ label, icon: Icon, active }) => (
-              <div key={label} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold ${active ? 'bg-[#2563EB] text-white shadow-md shadow-blue-500/20' : 'text-[#64748B]'}`}>
-                <Icon className="w-4 h-4" />
-                <span>{label}</span>
-              </div>
-            ))}
-            <div className="mt-24 rounded-xl border border-[#DBEAFE] bg-[#F8FAFC] p-3 text-center">
-              <FileText className="w-8 h-8 mx-auto text-[#7C9CF5] mb-2" />
-              <p className="text-[10px] font-bold text-[#2563EB]">Track. Analyze. Improve.</p>
-              <p className="text-[9px] text-[#64748B] mt-1">Real-time insights for better decisions.</p>
-            </div>
-          </aside>
-        )}
-        
+      <main className="flex-1 w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 max-w-7xl">
         {/* Page Title & Context Header */}
         <section className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-[#E2E8F0]">
@@ -241,7 +215,7 @@ export default function KPIDashboardPage() {
               <div className="text-xs">
                 <p className="text-[#64748B] font-medium">Current View Filter</p>
                 <p className="font-bold text-[#1E293B]">
-                  {selectedKPI} <span className="text-[#2563EB]">({selectedAcademicYear}{activeSectionInfo.section ? ` · Section ${activeSectionInfo.section}` : ' · All sections'}{activeSectionInfo.department ? ` · ${activeSectionInfo.department}` : ''})</span>
+                  {selectedKPI} <span className="text-[#2563EB]">({selectedAcademicYear})</span>
                 </p>
               </div>
             </div>
@@ -256,7 +230,7 @@ export default function KPIDashboardPage() {
               <span>Select Indicator & Data Scope</span>
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
               {/* Dropdown 1: KPI */}
               <div className="space-y-2">
@@ -283,14 +257,6 @@ export default function KPIDashboardPage() {
                     </svg>
                   </div>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="section-select" className="block text-xs font-bold uppercase tracking-wider text-[#1E293B]">Section</label>
-                <select id="section-select" value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)} className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl px-4 py-3.5 text-[#1E293B] text-sm font-semibold">
-                  <option value="">All sections</option>
-                  {sectionOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
               </div>
 
               {/* Dropdown 2: Academic Year */}
@@ -337,8 +303,6 @@ export default function KPIDashboardPage() {
           ) : selectedKPI === 'Pass Percentage' ? (
             <PassPercentageKPI
               academicYear={selectedAcademicYear}
-              department={activeSectionInfo.department}
-              section={activeSectionInfo.section}
               onAcademicYearChange={setSelectedAcademicYear}
             />
           ) : selectedKPI === 'Student-Faculty Ratio' ? (

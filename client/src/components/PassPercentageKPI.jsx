@@ -12,7 +12,8 @@ import {
   BookOpen,
   Users,
   Award,
-  AlertTriangle
+  AlertTriangle,
+  Building2
 } from 'lucide-react';
 
 import { API_BASE_URL, apiFetch } from '../api';
@@ -47,13 +48,19 @@ function getSubjectMeta(code, name) {
     if (name && SUBJECT_DETAILS[key].name.toLowerCase() === name.toLowerCase()) {
       return SUBJECT_DETAILS[key];
     }
+    if (code && key.toLowerCase() === code.toLowerCase()) {
+      return SUBJECT_DETAILS[key];
+    }
   }
   return { code: code || name, name: name || code, credits: 3, icon: '📚' };
 }
 
-export default function PassPercentageKPI({ academicYear = '2024-2025', department, section, onAcademicYearChange }) {
+export default function PassPercentageKPI({ academicYear = '2024-2025', onAcademicYearChange }) {
   const [internalYear, setInternalYear] = useState(academicYear);
   const [selectedSemester, setSelectedSemester] = useState('All');
+  const [selectedDepartment, setSelectedDepartment] = useState('All');
+  const [selectedSection, setSelectedSection] = useState('All');
+  const [sectionOptions, setSectionOptions] = useState([]);
 
   useEffect(() => {
     setInternalYear(academicYear);
@@ -64,18 +71,58 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [hoveredSubject, setHoveredSubject] = useState(null);
-  const [showSubjectTable, setShowSubjectTable] = useState(false);
 
+  // Fetch available sections dynamically for current year, dept, semester
+  useEffect(() => {
+    async function fetchSections() {
+      try {
+        const effectiveDept = selectedDepartment !== 'All' ? selectedDepartment : '';
+        const params = {
+          academic_year: activeYear,
+          ...(selectedSemester && selectedSemester !== 'All' ? { semester: selectedSemester } : {}),
+          ...(effectiveDept ? { department: effectiveDept } : {}),
+        };
+        const res = await apiFetch(`${API_BASE_URL}/api/filters/sections?${new URLSearchParams(params)}`);
+        if (res.ok) {
+          const list = await res.json();
+          const opts = (Array.isArray(list) ? list : []).map((item) => {
+            if (typeof item === 'string') {
+              const [sec, dept] = item.includes('::') ? item.split('::') : [item, ''];
+              return {
+                section: sec,
+                department: dept,
+                label: dept && selectedDepartment === 'All' ? `Section ${sec} (${dept})` : `Section ${sec}`,
+                value: item,
+              };
+            }
+            return {
+              section: item.section,
+              department: item.department,
+              label: item.label || (item.department && selectedDepartment === 'All' ? `Section ${item.section} (${item.department})` : `Section ${item.section}`),
+              value: item.value || item.section,
+            };
+          });
+          setSectionOptions(opts);
+        }
+      } catch (err) {
+        console.error('Failed to fetch sections:', err);
+      }
+    }
+    fetchSections();
+  }, [activeYear, selectedSemester, selectedDepartment]);
+
+  // Fetch Pass Percentage KPI with selected filters
   useEffect(() => {
     async function fetchPassPercentage() {
       setIsLoading(true);
       setError('');
       try {
+        const effectiveDept = selectedDepartment !== 'All' ? selectedDepartment : '';
         const params = {
           academic_year: activeYear,
           ...(selectedSemester && selectedSemester !== 'All' ? { semester: selectedSemester } : {}),
-          ...(department ? { department } : {}),
-          ...(section ? { section } : {}),
+          ...(effectiveDept ? { department: effectiveDept } : {}),
+          ...(selectedSection && selectedSection !== 'All' ? { section: selectedSection } : {}),
         };
         const queryParam = `?${new URLSearchParams(params)}`;
         const res = await apiFetch(`${API_BASE_URL}/api/kpis/pass-percentage${queryParam}`);
@@ -91,7 +138,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
       }
     }
     fetchPassPercentage();
-  }, [activeYear, selectedSemester, department, section]);
+  }, [activeYear, selectedSemester, selectedDepartment, selectedSection]);
 
   const totalEvaluated = data?.total_students_evaluated || 0;
   const overallPassed = data?.overall?.passed || 0;
@@ -139,6 +186,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              {/* Year Filter */}
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700">
                 <Calendar className="w-4 h-4 text-[#4F46E5]" />
                 <span>Year:</span>
@@ -156,12 +204,35 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 </select>
               </div>
 
+              {/* Department Filter with BCA support */}
+              <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700">
+                <Building2 className="w-4 h-4 text-[#4F46E5]" />
+                <span>Dept:</span>
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => {
+                    setSelectedDepartment(e.target.value);
+                    setSelectedSection('All');
+                  }}
+                  className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="All">All Departments</option>
+                  <option value="AI & Data Science">AI & Data Science</option>
+                  <option value="Computer Science and Engineering">CSE</option>
+                  <option value="BCA">BCA</option>
+                </select>
+              </div>
+
+              {/* Semester Filter */}
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700">
                 <Layers className="w-4 h-4 text-[#4F46E5]" />
                 <span>Semester:</span>
                 <select
                   value={selectedSemester}
-                  onChange={(e) => setSelectedSemester(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedSemester(e.target.value);
+                    setSelectedSection('All');
+                  }}
                   className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer pr-1"
                 >
                   <option value="All">All Semesters</option>
@@ -172,18 +243,23 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 </select>
               </div>
 
+              {/* Section Filter Dropdown */}
               <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-3.5 py-2 shadow-xs text-xs font-bold text-slate-700">
-                <BookOpen className="w-4 h-4 text-[#4F46E5]" />
-                <span>Section: {section ? `Section ${section}${department ? ` (${department})` : ''}` : 'All sections'}</span>
+                <Users className="w-4 h-4 text-[#4F46E5]" />
+                <span>Section:</span>
+                <select
+                  value={selectedSection}
+                  onChange={(e) => setSelectedSection(e.target.value)}
+                  className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="All">All Sections</option>
+                  {sectionOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-
-              <button
-                onClick={() => setShowSubjectTable(!showSubjectTable)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all duration-200 bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-700 shadow-xs cursor-pointer"
-              >
-                <Layers className="w-3.5 h-3.5 text-[#4F46E5]" />
-                <span>{showSubjectTable ? 'Hide Table' : 'Subject Table'}</span>
-              </button>
             </div>
           </div>
 
@@ -202,10 +278,10 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 <GraduationCap className="w-6 h-6" />
               </div>
               <h3 className="text-base font-bold text-slate-800">
-                No Evaluated Student Marks for Academic Year {activeYear} {selectedSemester !== 'All' ? `(${selectedSemester})` : ''}
+                No Evaluated Student Marks for Academic Year {activeYear} {selectedDepartment !== 'All' ? `• ${selectedDepartment}` : ''} {selectedSemester !== 'All' ? `• ${selectedSemester}` : ''} {selectedSection !== 'All' ? `• ${selectedSection.includes('::') ? selectedSection.split('::')[0] : selectedSection}` : ''}
               </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                {data?.message || `There are currently no student records in the database for the selected filters. Upload a student marks workbook for ${activeYear} to view live Pass Percentage analytics.`}
+                {data?.message || `There are currently no student records in the database for the selected filters. Upload student marks to view live Pass Percentage analytics.`}
               </p>
             </div>
           )}
@@ -284,7 +360,9 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
               {/* CARD 2: Overall Fail Percentage */}
               <div className="bg-white/95 rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow duration-200">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Overall Fail Rate</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Overall Fail Rate
+                  </span>
                   <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
                     <AlertTriangle className="w-4 h-4" />
                   </div>
@@ -305,7 +383,9 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
               {/* CARD 3: Students Passed Overall */}
               <div className="bg-white/95 rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow duration-200">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Passed All Subjects</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Passed All Subjects
+                  </span>
                   <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
@@ -326,7 +406,9 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
               {/* CARD 4: Students Failed Overall */}
               <div className="bg-white/95 rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow duration-200">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Failed ≥ 1 Subject</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Failed ≥ 1 Subject
+                  </span>
                   <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
                     <AlertCircle className="w-4 h-4" />
                   </div>
@@ -645,7 +727,9 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 {/* Center Stats Overlay */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                   <span className="text-3xl font-black text-slate-900">{overallPassPct}%</span>
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Overall Pass</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Overall Pass
+                  </span>
                   <span className="text-[10px] text-slate-400 font-semibold">{overallPassed} / {totalEvaluated} Cohort</span>
                 </div>
               </div>
@@ -659,7 +743,9 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                   </div>
                   <p className="text-2xl font-black text-emerald-900">{overallPassed}</p>
                   <p className="text-[11px] font-bold text-emerald-700 mt-0.5">{overallPassPct}% of Students</p>
-                  <p className="text-[10px] text-emerald-600 mt-1">Cleared All Subjects</p>
+                  <p className="text-[10px] text-emerald-600 mt-1">
+                    Cleared All Subjects
+                  </p>
                 </div>
 
                 <div className="rounded-2xl p-3.5 bg-rose-50/70 border border-rose-200/80 text-center">
@@ -669,7 +755,9 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                   </div>
                   <p className="text-2xl font-black text-rose-900">{overallFailed}</p>
                   <p className="text-[11px] font-bold text-rose-700 mt-0.5">{overallFailPct}% of Students</p>
-                  <p className="text-[10px] text-rose-600 mt-1">Failed ≥ 1 Subject</p>
+                  <p className="text-[10px] text-rose-600 mt-1">
+                    Failed ≥ 1 Subject
+                  </p>
                 </div>
               </div>
             </div>
@@ -684,9 +772,9 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
       </div>
 
       {/* ========================================================= */}
-      {/* SUBJECT BREAKDOWN TABLE (Collapsible or visible)         */}
+      {/* SUBJECT BREAKDOWN TABLE                                   */}
       {/* ========================================================= */}
-      {showSubjectTable && (
+      {subjectsList.length > 0 && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-xs animate-fadeIn">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <div>
@@ -694,7 +782,7 @@ export default function PassPercentageKPI({ academicYear = '2024-2025', departme
                 Subject-Level Performance Breakdown
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Detailed passing and failing student headcounts{department ? ` for Department of ${department}` : ''}.
+                Detailed passing and failing student headcounts{selectedDepartment !== 'All' ? ` for Department of ${selectedDepartment}` : ''}.
               </p>
             </div>
             <span className="px-3 py-1 rounded-full bg-indigo-50 text-[#4F46E5] text-xs font-bold">

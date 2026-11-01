@@ -16,6 +16,7 @@ export default function AttendanceTable({ attendance }) {
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Student Name</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Department</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Section</th>
+                <th className="px-4 py-3 text-[#1E293B] font-semibold">Semester</th>
                 <th className="px-4 py-3 text-[#1E293B] font-semibold">Academic Year</th>
                 {subjects.map((subject) => (
                   <th key={subject} className="px-4 py-3 text-[#1E293B] font-semibold">{subject}</th>
@@ -39,6 +40,15 @@ export default function AttendanceTable({ attendance }) {
                     <td className="px-4 py-3 text-[#1E293B]">{a.student_name}</td>
                     <td className="px-4 py-3 text-xs text-[#64748B]">{a.department || '—'}</td>
                     <td className="px-4 py-3 text-xs text-[#64748B]">{a.section || '—'}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {a.semester ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]">
+                          {a.semester}
+                        </span>
+                      ) : (
+                        <span className="text-[#64748B]">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F0FDF4] text-[#16A34A] border border-[#DCFCE7]">
                         {a.academic_year || a.academicYear || '2024-2025'}

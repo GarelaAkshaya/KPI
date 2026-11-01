@@ -6,7 +6,7 @@ class StudentUploadSchema(BaseModel):
     id: int
     studentId: str
     studentName: str
-    totalMarks: int
+    totalMarks: Union[float, int]
     percentage: float
     enrollment_number: Optional[str] = None
     enrollmentNumber: Optional[str] = None
@@ -15,12 +15,12 @@ class StudentUploadSchema(BaseModel):
     semester: Optional[str] = "Semester 1"
     academic_year: Optional[str] = "2024-2025"
     academicYear: Optional[str] = "2024-2025"
-    dm: Optional[int] = None
-    dsc: Optional[int] = None
-    coa: Optional[int] = None
-    python_marks: Optional[int] = None
-    ml: Optional[int] = None
-    subject_marks: Optional[dict[str, Optional[int]]] = None
+    dm: Optional[Union[float, int]] = None
+    dsc: Optional[Union[float, int]] = None
+    coa: Optional[Union[float, int]] = None
+    python_marks: Optional[Union[float, int]] = None
+    ml: Optional[Union[float, int]] = None
+    subject_marks: Optional[dict[str, Optional[Union[float, int]]]] = None
     component_marks: Optional[dict[str, dict[str, Optional[float]]]] = None
     createdAt: str
 
@@ -56,6 +56,8 @@ class UploadResponse(BaseModel):
     count: int
     students: Optional[int] = None
     subjects: Optional[int] = None
+    subject: Optional[str] = None
+    subject_name: Optional[str] = None
     subject_names: Optional[list[str]] = None
     average_attendance: Optional[float] = None
     academic_year: Optional[str] = None
@@ -73,7 +75,7 @@ class StudentMarkItem(BaseModel):
     test2: Optional[float] = None
     lab2: Optional[float] = None
     compre: Optional[float] = None
-    total: float
+    total: Optional[float] = None
 
 
 class SubjectSheetPreview(BaseModel):
@@ -96,6 +98,8 @@ class WorkbookPreviewResponse(BaseModel):
     department: str
     section: str
     semester: str
+    subject: Optional[str] = None
+    subject_name: Optional[str] = None
     total_sheets: Optional[int] = None
     total_students: int
     filename: Optional[str] = None
@@ -202,6 +206,7 @@ class StudentAttendanceBase(BaseModel):
     student_name: str
     department: str
     section: Optional[str] = None
+    semester: Optional[str] = None
     academic_year: str
     total_classes: int = 0
     attended_classes: int = 0
@@ -308,6 +313,10 @@ class PassPercentageKPIResponse(BaseModel):
     academic_year: str
     academicYear: str
     semester: Optional[str] = None
+    department: Optional[str] = None
+    section: Optional[str] = None
+    subject: Optional[str] = None
+    subject_name: Optional[str] = None
     total_students_evaluated: int
     total_students_count: int
     uncalculated_count: int

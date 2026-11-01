@@ -138,11 +138,24 @@ def normalize_academic_year(year: Optional[str]) -> Optional[str]:
     raise ValueError(f"Invalid Academic Year '{year}'. Allowed years are '2024-2025' and '2025-2026'.")
 
 
+def normalize_semester(sem: Optional[str]) -> Optional[str]:
+    if not sem or not str(sem).strip():
+        return None
+    val = str(sem).strip()
+    if val.lower() in {"all", "all semesters", "all_semesters"}:
+        return "All"
+    m = re.match(r'^(?:semester\s*)?([1-8])$', val, re.IGNORECASE)
+    if m:
+        return f"Semester {m.group(1)}"
+    return val
+
+
 def normalize_student_rows(
     raw_rows: Any,
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], bool]:
     if isinstance(raw_rows, pd.DataFrame):
         raw_rows = raw_rows.to_dict(orient="records")
@@ -155,6 +168,8 @@ def normalize_student_rows(
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
     if norm_year not in {"2024-2025", "2025-2026"}:
         raise ValueError(f"Invalid Academic Year '{academic_year}'. Only '2024-2025' and '2025-2026' are accepted.")
+
+    norm_sem = normalize_semester(semester)
 
     # Check if this sheet is a subject-marks sheet with DM, DSC, COA, Python, ML
     sample_keys = {str(k).strip().lower(): k for k in raw_rows[0].keys()}
@@ -211,11 +226,11 @@ def normalize_student_rows(
             if not enrollment_val:
                 raise ValueError(f"Row {row_idx}: Enrollment Number is missing.")
 
-            # Validate enrollment format: 23STUCHH followed by exactly 3 digits (e.g. 23STUCHH001)
-            if not re.match(r"^23STUCHH\d{3}$", enrollment_val, re.IGNORECASE):
+            # Validate enrollment format: alphanumeric institutional format (e.g. 23STUCHH001, 24STUCHH010001)
+            if not re.match(r"^[0-9A-Za-z_-]{5,20}$", enrollment_val):
                 raise ValueError(
                     f"Row {row_idx}: Invalid Enrollment Number '{enrollment_val}'. "
-                    "Expected format is '23STUCHH' followed by exactly 3 digits (e.g. 23STUCHH001)."
+                    "Expected valid enrollment number format (e.g. 23STUCHH001 or 24STUCHH010001)."
                 )
             enrollment_number = enrollment_val.upper()
 
@@ -271,7 +286,8 @@ def normalize_student_rows(
                 raw_mark = row.get(col_name)
 
                 if _is_missing(raw_mark) or str(raw_mark).strip() == "":
-                    raise ValueError(f"Row {row_idx}: Missing mark for subject '{subj_code}'.")
+                    subject_marks[subj_code] = 0
+                    continue
 
                 try:
                     mark_float = float(str(raw_mark).strip())
@@ -308,6 +324,7 @@ def normalize_student_rows(
                 "totalMarks": total_marks,
                 "percentage": percentage,
                 "academic_year": norm_year,
+                "semester": norm_sem,
                 "dm": dm,
                 "dsc": dsc,
                 "coa": coa,
@@ -422,6 +439,7 @@ def normalize_attendance_rows(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
     if isinstance(raw_rows, pd.DataFrame):
         if headers is None:
@@ -438,6 +456,8 @@ def normalize_attendance_rows(
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
     if norm_year not in {"2024-2025", "2025-2026"}:
         raise ValueError(f"Invalid Academic Year '{academic_year}'. Only '2024-2025' and '2025-2026' are accepted.")
+
+    norm_sem = normalize_semester(semester)
 
     # Subject aliases for the 5 attendance subjects
     attendance_subject_aliases = {
@@ -485,11 +505,11 @@ def normalize_attendance_rows(
             if not enrollment_val:
                 raise ValueError(f"Row {row_idx}: Enrollment Number is missing.")
 
-            # Validate enrollment format: 23STUCHH followed by exactly 3 digits (e.g. 23STUCHH001)
-            if not re.match(r"^23STUCHH\d{3}$", enrollment_val, re.IGNORECASE):
+            # Validate enrollment format: alphanumeric institutional format (e.g. 23STUCHH001, 24STUCHH010001)
+            if not re.match(r"^[0-9A-Za-z_-]{5,20}$", enrollment_val):
                 raise ValueError(
                     f"Row {row_idx}: Invalid Enrollment Number '{enrollment_val}'. "
-                    "Expected format is '23STUCHH' followed by exactly 3 digits (e.g. 23STUCHH001)."
+                    "Expected valid enrollment number format (e.g. 23STUCHH001 or 24STUCHH010001)."
                 )
             enrollment_number = enrollment_val.upper()
 
@@ -578,6 +598,7 @@ def normalize_attendance_rows(
                 "department": department_name,
                 "section": section_name.upper() if section_name else None,
                 "academic_year": norm_year,
+                "semester": norm_sem,
                 "total_classes": total_classes,
                 "attended_classes": attended_classes,
                 "attendance_percentage": calculated_avg,
@@ -670,6 +691,7 @@ def normalize_attendance_rows(
                 'department': form_department or 'Artificial Intelligence and Data Science (AIDS)',
                 'section': (form_section or '').upper() if form_section else None,
                 'academic_year': norm_year,
+                'semester': norm_sem,
                 'total_classes': len(subject_values) * 100,
                 'attended_classes': int(round(sum(subject_values.values()))),
                 'attendance_percentage': average,
@@ -711,6 +733,7 @@ def normalize_attendance_rows(
             "department": form_department or "Artificial Intelligence and Data Science (AIDS)",
             "section": (form_section or '').upper() if form_section else None,
             "academic_year": norm_year,
+            "semester": norm_sem,
             "total_classes": 100,
             "attended_classes": int(round(percentage)),
             "attendance_percentage": percentage,
@@ -728,6 +751,7 @@ def parse_attendance_excel_file(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], bool, List[str]]:
     if filename.lower().endswith('.csv'):
         df = pd.read_csv(io.BytesIO(file_contents))
@@ -739,20 +763,29 @@ def parse_attendance_excel_file(
     headers = [_clean_header(header) for header in df.columns]
     df.columns = headers
     rows = df.to_dict(orient='records')
-    return normalize_attendance_rows(rows, headers, academic_year=academic_year, department=department, section=section)
+    return normalize_attendance_rows(rows, headers, academic_year=academic_year, department=department, section=section, semester=semester)
 
 
-def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None) -> int:
+def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None, semester: Optional[str] = None) -> int:
     norm_year = normalize_academic_year(academic_year) or (records[0].get('academic_year') if records else "2024-2025")
+    norm_sem = normalize_semester(semester) or (records[0].get('semester') if records else None)
+
+    existing_query = db.query(models.StudentAttendance).filter(models.StudentAttendance.academic_year == norm_year)
+    if norm_sem and norm_sem != "All":
+        existing_query = existing_query.filter(func.lower(func.trim(models.StudentAttendance.semester)) == norm_sem.lower())
+    else:
+        existing_query = existing_query.filter(models.StudentAttendance.semester.is_(None))
+
     existing_attendance = {
         str(a.enrollment_number or a.student_id).strip().casefold(): a
-        for a in db.query(models.StudentAttendance).filter(models.StudentAttendance.academic_year == norm_year).all()
+        for a in existing_query.all()
     }
     for r in records:
         enrollment = str(r.get('enrollment_number') or r['student_id']).strip().casefold()
         subjs_json = json.dumps(r.get('subjects', []))
         subj_vals_json = json.dumps(r.get('subject_values', {}))
         year = norm_year or r.get('academic_year', '2024-2025')
+        sem_val = norm_sem or r.get('semester')
         section_value = r.get('section')
         if section_value is not None:
             section_value = str(section_value).strip().upper() or None
@@ -762,6 +795,7 @@ def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic
             att.department = r.get('department', att.department)
             att.section = section_value or att.section
             att.academic_year = year
+            att.semester = sem_val or att.semester
             att.total_classes = r['total_classes']
             att.attended_classes = r['attended_classes']
             att.attendance_percentage = r['attendance_percentage']
@@ -776,6 +810,7 @@ def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic
                 department=r.get('department', 'Artificial Intelligence and Data Science (AIDS)'),
                 section=section_value,
                 academic_year=year,
+                semester=sem_val,
                 total_classes=r['total_classes'],
                 attended_classes=r['attended_classes'],
                 attendance_percentage=r['attendance_percentage'],
@@ -789,8 +824,9 @@ def save_attendance_records(db: Session, records: List[Dict[str, Any]], academic
     return len(records)
 
 
-def match_attendance_students(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
+def match_attendance_students(db: Session, records: List[Dict[str, Any]], academic_year: Optional[str] = None, semester: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
+    norm_sem = normalize_semester(semester)
     query = db.query(models.StudentUpload).filter(models.StudentUpload.academic_year == norm_year)
     students = query.all()
 
@@ -805,6 +841,18 @@ def match_attendance_students(db: Session, records: List[Dict[str, Any]], academ
             student_by_enrollment[enum] = student
         sname = str(student.studentName).strip().casefold()
         if sname:
+            student_by_name[sname] = student
+
+    all_students = db.query(models.StudentUpload).all()
+    for student in all_students:
+        sid = str(student.studentId).strip().casefold()
+        if sid and sid not in student_by_enrollment:
+            student_by_enrollment[sid] = student
+        enum = str(getattr(student, 'enrollment_number', None) or '').strip().casefold()
+        if enum and enum not in student_by_enrollment:
+            student_by_enrollment[enum] = student
+        sname = str(student.studentName).strip().casefold()
+        if sname and sname not in student_by_name:
             student_by_name[sname] = student
 
     unmatched = []
@@ -827,6 +875,8 @@ def match_attendance_students(db: Session, records: List[Dict[str, Any]], academ
         record['department'] = record.get('department') or getattr(student, 'department', '') or 'Artificial Intelligence and Data Science (AIDS)'
         record['section'] = record.get('section') or getattr(student, 'section', '') or None
         record['academic_year'] = norm_year
+        if norm_sem:
+            record['semester'] = norm_sem
         matched_records.append(record)
 
     return matched_records, unmatched
@@ -891,11 +941,20 @@ def get_configured_subjects_for_semester(department: str, section: str, academic
     norm_dept = canonicalize_department_name(department)
     dept_key = "AIDS" if norm_dept == "AI & Data Science" else norm_dept
     sec_key = (section or "").strip().upper()
+    m = re.match(r'^([A-Z0-9]+)\s*[-_]?\s*sem', sec_key, re.IGNORECASE)
+    if m:
+        sec_key = m.group(1).upper()
     sem_key = (semester or "").strip()
 
-    dept_cfg = SEMESTER_CONFIGS.get(dept_key) or SEMESTER_CONFIGS.get("AIDS", {})
-    sec_cfg = dept_cfg.get(sec_key) or dept_cfg.get("A", {})
-    year_cfg = sec_cfg.get(norm_year) or sec_cfg.get("2024-2025", {})
+    dept_cfg = SEMESTER_CONFIGS.get(dept_key)
+    if not dept_cfg:
+        return []
+    sec_cfg = dept_cfg.get(sec_key)
+    if not sec_cfg:
+        return []
+    year_cfg = sec_cfg.get(norm_year)
+    if not year_cfg:
+        return []
     return year_cfg.get(sem_key, [])
 
 
@@ -917,19 +976,143 @@ def match_subject_name(sheet_name: str, configured_subjects: List[str]) -> str:
 
 
 def _find_col(headers: List[str], patterns: List[str]) -> Optional[str]:
+    # 1. Exact match on normalized header
     for pat in patterns:
         clean_pat = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', pat.lower())
         for h in headers:
             clean_h = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', str(h).lower())
             if clean_pat == clean_h:
                 return h
+    # 2. Match after removing trailing units like m, marks, max attached to digits (e.g. 15m -> 15)
+    for pat in patterns:
+        clean_pat = re.sub(r'(\d+)\s*(m|marks?|max)$', r'\1', pat.lower())
+        clean_pat = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', clean_pat)
+        for h in headers:
+            clean_h = re.sub(r'(\d+)\s*(m|marks?|max)$', r'\1', str(h).lower())
+            clean_h = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', clean_h)
+            if clean_pat == clean_h:
+                return h
+    # 3. Substring match (pattern in header ONLY, NEVER header in pattern to prevent S# matching test/total)
     for pat in patterns:
         clean_pat = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', pat.lower())
         for h in headers:
             clean_h = re.sub(r'[\s_\-\(\)\[\]#\.]+', '', str(h).lower())
-            if clean_pat in clean_h or clean_h in clean_pat:
+            if len(clean_pat) >= 3 and clean_pat in clean_h:
                 return h
     return None
+
+
+def identify_marks_columns(headers: List[str]) -> Dict[str, Optional[str]]:
+    assigned = {
+        'sno': None,
+        'enrol': None,
+        'name': None,
+        'test1': None,
+        'lab1': None,
+        'test2': None,
+        'lab2': None,
+        'compre': None,
+        'total': None
+    }
+
+    processed = []
+    for h in headers:
+        orig = str(h)
+        norm = orig.replace('\r', ' ').replace('\n', ' ').strip().lower()
+        norm = re.sub(r'\s+', ' ', norm)
+        clean = re.sub(r'[^a-z0-9]+', '', norm)
+        clean_no_u = re.sub(r'(\d+)\s*(m|marks?|max)$', r'\1', norm)
+        clean_no_u = re.sub(r'[^a-z0-9]+', '', clean_no_u)
+        processed.append((orig, norm, clean, clean_no_u))
+
+    used_origs = set()
+
+    # 1. Total (check total first to prevent it being matched as a component or test)
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if re.search(r'\btotal\b', norm) or clean in {'total', 'total100', 'total100m', 'totalmarks', 'total_marks'} or cnu in {'total100'}:
+            assigned['total'] = orig
+            used_origs.add(orig)
+            break
+
+    # 2. S.No / S# (Serial number - check before test/lab so S# never matches test1/test2)
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if norm in {'s#', 's.#', 's.no', 's no', 'sno', 'sl.no', 'sl no', 'serial no', 'serial number', 'sr no', 'sr. no'} or clean in {'s', 'sno', 'slno', 'serialno', 'srno'}:
+            assigned['sno'] = orig
+            used_origs.add(orig)
+            break
+
+    # 3. Enrollment Number
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if any(k in norm for k in ['enrol', 'enroll', 'roll no', 'rollno', 'student id', 'studentid', 'reg no', 'regno', 'registration no']):
+            assigned['enrol'] = orig
+            used_origs.add(orig)
+            break
+
+    # 4. Student Name
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if any(k in norm for k in ['student name', 'name of student', 'student_name', 'candidate name']) or norm == 'name' or clean == 'name':
+            assigned['name'] = orig
+            used_origs.add(orig)
+            break
+
+    # 5. Compre (40)
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if any(k in norm for k in ['compre', 'end sem', 'comprehensive', 'comprehension']) or clean in {'compre', 'compre40', 'compre40m', 'compre40marks'} or cnu in {'compre40'}:
+            assigned['compre'] = orig
+            used_origs.add(orig)
+            break
+
+    # 6. Test 1 (15)
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if (('test' in norm or clean.startswith('t')) and '1' in clean and '2' not in clean) or clean in {'test1', 'test115', 'test115m', 't1', 'test115marks'} or cnu in {'test115'}:
+            if 'lab' not in norm:
+                assigned['test1'] = orig
+                used_origs.add(orig)
+                break
+
+    # 7. Lab 1 (15)
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if (('lab' in norm or clean.startswith('l')) and '1' in clean and '2' not in clean) or clean in {'lab1', 'lab115', 'lab115m', 'l1', 'lab115marks'} or cnu in {'lab115'}:
+            if 'test' not in norm:
+                assigned['lab1'] = orig
+                used_origs.add(orig)
+                break
+
+    # 8. Test 2 (15)
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if (('test' in norm or clean.startswith('t')) and '2' in clean and '1' not in clean) or clean in {'test2', 'test215', 'test215m', 't2', 'test215marks'} or cnu in {'test215'}:
+            if 'lab' not in norm:
+                assigned['test2'] = orig
+                used_origs.add(orig)
+                break
+
+    # 9. Lab 2 (15)
+    for orig, norm, clean, cnu in processed:
+        if orig in used_origs:
+            continue
+        if (('lab' in norm or clean.startswith('l')) and '2' in clean and '1' not in clean) or clean in {'lab2', 'lab215', 'lab215m', 'l2', 'lab215marks'} or cnu in {'lab215'}:
+            if 'test' not in norm:
+                assigned['lab2'] = orig
+                used_origs.add(orig)
+                break
+
+    return assigned
 
 
 def is_semester_workbook(file_contents: bytes) -> bool:
@@ -953,7 +1136,8 @@ def parse_semester_workbook_for_preview(
     academic_year: str,
     department: str,
     section: str,
-    semester: str
+    semester: str,
+    subject: Optional[str] = None
 ) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year)
     if norm_year not in {"2024-2025", "2025-2026"}:
@@ -974,6 +1158,8 @@ def parse_semester_workbook_for_preview(
     norm_sec = section.strip().upper()
 
     configured_subjects = get_configured_subjects_for_semester(norm_dept, norm_sec, norm_year, norm_sem)
+    if subject and subject.strip() and subject.strip() not in configured_subjects:
+        configured_subjects = [subject.strip()] + configured_subjects
 
     try:
         excel_file = pd.ExcelFile(io.BytesIO(file_contents))
@@ -1014,32 +1200,57 @@ def parse_semester_workbook_for_preview(
 
         headers = [str(c).strip() for c in df.columns]
 
-        col_enrol = _find_col(headers, ["enrolno", "enrol_no", "enrollment_number", "enrollment number", "enrollment no", "student id", "studentid", "rollno", "roll no"])
-        col_name = _find_col(headers, ["name", "student name", "student_name", "name of student"])
-        col_sno = _find_col(headers, ["s#", "s.#", "s.no", "s no", "sno", "sl.no", "sl no", "serial no"])
-        col_test1 = _find_col(headers, ["test 1 (15)", "test 1(15)", "test-1 (15)", "test 1", "test-1", "test1"])
-        col_lab1 = _find_col(headers, ["lab-1 (15)", "lab 1 (15)", "lab-1(15)", "lab 1(15)", "lab-1", "lab 1", "lab1"])
-        col_test2 = _find_col(headers, ["test 2 (15)", "test 2(15)", "test-2 (15)", "test 2", "test-2", "test2"])
-        col_lab2 = _find_col(headers, ["lab-2 (15)", "lab 2 (15)", "lab-2(15)", "lab 2(15)", "lab-2", "lab 2", "lab2"])
-        col_compre = _find_col(headers, ["compre (40)", "compre(40)", "compre", "comprehension", "end sem", "comprehensive"])
+        cols_map = identify_marks_columns(headers)
+        col_enrol = cols_map.get("enrol") or _find_col(headers, ["enrolno", "enrol_no", "enrollment_number", "enrollment number", "enrollment no", "student id", "studentid", "rollno", "roll no"])
+        col_name = cols_map.get("name") or _find_col(headers, ["name", "student name", "student_name", "name of student"])
+        col_sno = cols_map.get("sno") or _find_col(headers, ["s#", "s.#", "s.no", "s no", "sno", "sl.no", "sl no", "serial no"])
+        col_test1 = cols_map.get("test1") or _find_col(headers, ["test 1 (15)", "test 1(15)", "test 1\n15 m", "test 1\n15m", "test 1 15m", "test-1 (15)", "test 1", "test-1", "test1", "t1"])
+        col_lab1 = cols_map.get("lab1") or _find_col(headers, ["lab-1 (15)", "lab 1 (15)", "lab-1\n15 m", "lab 1\n15 m", "lab-1\n15m", "lab 1\n15m", "lab 1 15m", "lab-1", "lab 1", "lab1", "l1"])
+        col_test2 = cols_map.get("test2") or _find_col(headers, ["test 2 (15)", "test 2(15)", "test 2\n15 m", "test 2\n15m", "test 2 15m", "test-2 (15)", "test 2", "test-2", "test2", "t2"])
+        col_lab2 = cols_map.get("lab2") or _find_col(headers, ["lab-2 (15)", "lab 2 (15)", "lab-2\n15 m", "lab 2\n15 m", "lab-2\n15m", "lab 2\n15m", "lab 2 15m", "lab-2", "lab 2", "lab2", "l2"])
+        col_compre = cols_map.get("compre") or _find_col(headers, ["compre (40)", "compre(40)", "compre\n40m", "compre\n40 m", "compre 40m", "compre", "comprehension", "end sem", "comprehensive"])
+        col_total = cols_map.get("total") or _find_col(headers, ["total (100)", "total(100)", "total\n100 m", "total\n100m", "total 100m", "total marks", "total_marks", "total", "marks"])
+
+        # Strict safety guards: Serial number and Total columns must NEVER be mapped as component columns!
+        if col_test1 in (col_sno, col_total):
+            col_test1 = None
+        if col_test2 in (col_sno, col_total):
+            col_test2 = None
+        if col_lab1 in (col_sno, col_total):
+            col_lab1 = None
+        if col_lab2 in (col_sno, col_total):
+            col_lab2 = None
+        if col_compre in (col_sno, col_total):
+            col_compre = None
 
         sheet_errors = []
         if not col_enrol:
             sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Enrolno' column.")
         if not col_name:
             sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Name' column.")
-        if not col_test1:
-            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Test 1 (15)' column.")
-        if not col_lab1:
-            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Lab-1 (15)' column.")
-        if not col_test2:
-            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Test 2 (15)' column.")
-        if not col_lab2:
-            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Lab-2 (15)' column.")
-        if not col_compre:
-            sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Compre (40)' column.")
 
-        canonical_subject = match_subject_name(clean_s_name, configured_subjects)
+        has_components = bool(col_test1 and col_lab1 and col_test2 and col_lab2 and col_compre)
+        has_total = bool(col_total is not None)
+
+        if not has_components and not has_total:
+            if not col_test1:
+                sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Test 1 (15)' column.")
+            if not col_lab1:
+                sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Lab-1 (15)' column.")
+            if not col_test2:
+                sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Test 2 (15)' column.")
+            if not col_lab2:
+                sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Lab-2 (15)' column.")
+            if not col_compre:
+                sheet_errors.append(f"Worksheet '{clean_s_name}': Missing 'Compre (40)' column.")
+
+        if subject and subject.strip():
+            if len(sheet_names) == 1 or clean_s_name.lower() in {subject.strip().lower(), "sheet1", "sheet 1"}:
+                canonical_subject = subject.strip()
+            else:
+                canonical_subject = match_subject_name(clean_s_name, [subject.strip()] + configured_subjects)
+        else:
+            canonical_subject = match_subject_name(clean_s_name, configured_subjects)
         detected_subjects.append(canonical_subject)
 
         rows_list = []
@@ -1079,26 +1290,43 @@ def parse_semester_workbook_for_preview(
 
                 def parse_comp(raw_val, comp_name, max_val):
                     if _is_missing(raw_val) or str(raw_val).strip() == "":
-                        sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Missing mark for {comp_name}.")
                         return 0.0
                     try:
                         val = float(str(raw_val).strip())
                     except Exception:
-                        sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Invalid mark '{raw_val}' for {comp_name}. Must be numeric.")
-                        return 0.0
+                        sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num} (Enrollment {enrol_str}): Invalid mark '{raw_val}' for {comp_name}. Must be numeric.")
+                        return None
                     if val < 0 or val > max_val:
-                        sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num}: Mark {val} for {comp_name} outside range [0, {max_val}].")
+                        sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num} (Enrollment {enrol_str}): Mark {val} for {comp_name} outside range [0, {max_val}].")
                     return round(val, 2)
 
-                t1 = parse_comp(r.get(col_test1), "Test 1", 15)
-                l1 = parse_comp(r.get(col_lab1), "Lab-1", 15)
-                t2 = parse_comp(r.get(col_test2), "Test 2", 15)
-                l2 = parse_comp(r.get(col_lab2), "Lab-2", 15)
-                comp = parse_comp(r.get(col_compre), "Compre", 40)
+                if has_components:
+                    t1 = parse_comp(r.get(col_test1), "Test 1", 15)
+                    l1 = parse_comp(r.get(col_lab1), "Lab-1", 15)
+                    t2 = parse_comp(r.get(col_test2), "Test 2", 15)
+                    l2 = parse_comp(r.get(col_lab2), "Lab-2", 15)
+                    comp = parse_comp(r.get(col_compre), "Compre", 40)
+                    if any(c is None for c in [t1, l1, t2, l2, comp]):
+                        calculated_total = None
+                    else:
+                        calculated_total = round(t1 + l1 + t2 + l2 + comp, 2)
+                else:
+                    t1, l1, t2, l2, comp = None, None, None, None, None
+                    raw_tot = r.get(col_total)
+                    if _is_missing(raw_tot) or str(raw_tot).strip() == "":
+                        calculated_total = 0.0
+                    else:
+                        try:
+                            val = float(str(raw_tot).strip())
+                            if val < 0 or val > 100:
+                                sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num} (Enrollment {enrol_str}): Mark {val} for Total outside range [0, 100].")
+                            calculated_total = round(val, 2)
+                        except Exception:
+                            sheet_errors.append(f"Sheet '{clean_s_name}', Row {excel_row_num} (Enrollment {enrol_str}): Invalid mark '{raw_tot}' for Total. Must be numeric.")
+                            calculated_total = None
 
-                # Automatic Total calculation
-                calculated_total = round(t1 + l1 + t2 + l2 + comp, 2)
-                totals_list.append(calculated_total)
+                if calculated_total is not None:
+                    totals_list.append(calculated_total)
                 all_unique_students.add(enrol_str)
 
                 rows_list.append({
@@ -1121,7 +1349,7 @@ def parse_semester_workbook_for_preview(
             "subject_name": canonical_subject,
             "sheet_name": clean_s_name,
             "student_count": len(rows_list),
-            "valid_rows": len(rows_list),
+            "valid_rows": len([r for r in rows_list if r.get("total") is not None]),
             "average_total": avg_tot,
             "min_total": min_tot,
             "max_total": max_tot,
@@ -1132,6 +1360,10 @@ def parse_semester_workbook_for_preview(
         })
         all_errors.extend(sheet_errors)
 
+    if len(sheets_data) == 1 and subject and subject.strip():
+        sheets_data[0]["subject_name"] = subject.strip()
+        detected_subjects = [subject.strip()]
+
     if not sheets_data:
         all_errors.append("No valid worksheets containing student mark columns found in the uploaded workbook.")
 
@@ -1141,6 +1373,8 @@ def parse_semester_workbook_for_preview(
         "department": norm_dept,
         "section": norm_sec,
         "semester": norm_sem,
+        "subject": subject.strip() if subject else None,
+        "subject_name": subject.strip() if subject else None,
         "total_sheets": len(sheets_data),
         "total_students": len(all_unique_students),
         "filename": file_name,
@@ -1180,7 +1414,7 @@ def save_semester_marks(
         del_q = db.query(models.StudentMark).filter(
             models.StudentMark.academic_year == norm_year,
             models.StudentMark.semester == norm_sem,
-            models.StudentMark.department == norm_dept,
+            func.lower(func.trim(models.StudentMark.department)) == norm_dept.lower(),
             func.lower(func.trim(models.StudentMark.section)) == norm_sec.lower(),
             models.StudentMark.subject.in_(subjects_in_workbook)
         )
@@ -1305,6 +1539,8 @@ def save_semester_marks(
             "count": len(new_marks),
             "students": len(students_map),
             "subjects": len(sheets),
+            "subject": subjects_in_workbook[0] if subjects_in_workbook else None,
+            "subject_name": subjects_in_workbook[0] if subjects_in_workbook else None,
             "subject_names": subjects_in_workbook,
             "academic_year": norm_year,
             "semester": norm_sem,
@@ -1457,7 +1693,7 @@ def get_student_faculty_ratio_data(db: Session, academic_year: Optional[str] = N
             "totalStudents": total_students,
             "totalFaculty": 0,
             "ratio": 0.0,
-            "academicYear": norm_year or "2024-2025",
+            "academicYear": norm_year or "2025-2026",
             "message": "Student-Faculty ratio is unavailable because no faculty records exist."
         }
 
@@ -1465,7 +1701,7 @@ def get_student_faculty_ratio_data(db: Session, academic_year: Optional[str] = N
         "totalStudents": total_students,
         "totalFaculty": total_faculty,
         "ratio": round(total_students / float(total_faculty), 2),
-        "academicYear": norm_year or "2024-2025"
+        "academicYear": norm_year or "2025-2026"
     }
 
 
@@ -1473,7 +1709,7 @@ def get_student_faculty_ratio_trend(db: Session) -> Dict[str, Any]:
     total_faculty = db.query(models.Faculty).count()
     year_rows = db.query(
         models.StudentUpload.academic_year,
-        func.count(models.StudentUpload.id)
+        func.count(func.distinct(models.StudentUpload.studentId))
     ).group_by(models.StudentUpload.academic_year).all()
 
     trend_data = []
@@ -1534,11 +1770,20 @@ def canonicalize_department_name(value: Optional[str]) -> Optional[str]:
         "aids",
         "data science and artificial intelligence",
     }
+    bca_aliases = {
+        "bca",
+        "bachelor of computer applications",
+        "bachelor of computer application",
+        "b.c.a",
+        "b.c.a.",
+    }
 
     if key in cse_aliases:
         return "Computer Science and Engineering"
     if key in ai_aliases:
         return "AI & Data Science"
+    if key in bca_aliases or key == "bca":
+        return "BCA"
 
     if key.startswith("computer science") and "engineering" in key:
         return "Computer Science and Engineering"
@@ -1547,7 +1792,8 @@ def canonicalize_department_name(value: Optional[str]) -> Optional[str]:
     if "aids" in key and ("artificial intelligence" in key or "data science" in key or "ai" in key):
         return "AI & Data Science"
 
-    return None
+    clean_val = str(value).strip() if value else None
+    return clean_val
 
 
 def parse_section_identifier(section: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -1556,6 +1802,7 @@ def parse_section_identifier(section: Optional[str]) -> Tuple[Optional[str], Opt
     Supports formats like:
       - "A::Computer Science and Engineering" -> ("A", "Computer Science and Engineering")
       - "A::AI & Data Science" -> ("A", "AI & Data Science")
+      - "A::BCA" -> ("A", "BCA")
       - "A" -> ("A", None)
     """
     if not section:
@@ -1577,13 +1824,15 @@ def find_department_for_section(db: Session, section: Optional[str], academic_ye
     target = (sec_name or section).strip().lower()
     q_stud = db.query(models.StudentUpload.department).filter(func.lower(func.trim(models.StudentUpload.section)) == target)
     q_att = db.query(models.StudentAttendance.department).filter(func.lower(func.trim(models.StudentAttendance.section)) == target)
+    q_mark = db.query(models.StudentMark.department).filter(func.lower(func.trim(models.StudentMark.section)) == target)
     if academic_year:
         norm_year = normalize_academic_year(academic_year)
         if norm_year:
             q_stud = q_stud.filter(models.StudentUpload.academic_year == norm_year)
             q_att = q_att.filter(models.StudentAttendance.academic_year == norm_year)
+            q_mark = q_mark.filter(models.StudentMark.academic_year == norm_year)
     depts = set()
-    for row in q_stud.distinct().all() + q_att.distinct().all():
+    for row in q_stud.distinct().all() + q_att.distinct().all() + q_mark.distinct().all():
         if row[0]:
             canon = canonicalize_department_name(row[0])
             if canon:
@@ -1593,7 +1842,33 @@ def find_department_for_section(db: Session, section: Optional[str], academic_ye
     return None
 
 
-def _apply_scope(query, model, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None):
+def _normalize_section_aliases(sec: Optional[str]) -> List[str]:
+    if not sec:
+        return []
+    s = str(sec).strip().lower()
+    variants = {s}
+    m = re.match(r'^([a-z0-9]+)\s*[-_]?\s*sem(?:ester)?\s*[-_]?\s*([0-9]+)?$', s, re.IGNORECASE)
+    if m:
+        base_sec = m.group(1).lower()
+        sem_num = m.group(2)
+        variants.add(base_sec)
+        if sem_num:
+            variants.add(f"{base_sec}sem-{sem_num}")
+            variants.add(f"{base_sec}sem{sem_num}")
+            variants.add(f"{base_sec}-sem-{sem_num}")
+            variants.add(f"{base_sec}-sem{sem_num}")
+            variants.add(f"{base_sec} sem {sem_num}")
+    else:
+        for sem in ['1', '2', '3', '4', '5', '6', '7', '8']:
+            variants.add(f"{s}sem-{sem}")
+            variants.add(f"{s}sem{sem}")
+            variants.add(f"{s}-sem-{sem}")
+            variants.add(f"{s}-sem{sem}")
+            variants.add(f"{s} sem {sem}")
+    return list(variants)
+
+
+def _apply_scope(query, model, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None, semester: Optional[str] = None):
     """Apply the selected dashboard scope before KPI data is materialized."""
     norm_year = normalize_academic_year(academic_year)
     if norm_year and hasattr(model, "academic_year"):
@@ -1610,37 +1885,65 @@ def _apply_scope(query, model, academic_year: Optional[str] = None, department: 
 
     canonical_department = canonicalize_department_name(effective_dept) if effective_dept else None
     if canonical_department and hasattr(model, "department"):
-        aliases = {
+        aliases_map = {
             "Computer Science and Engineering": ["computer science and engineering", "computer science engineering", "computer science & engineering", "computer science and engineering (cse)", "cse"],
             "AI & Data Science": ["ai & data science", "ai and data science", "artificial intelligence & data science", "artificial intelligence and data science", "artificial intelligence and data science (aids)", "artificial intelligence & data science (aids)", "aids"],
-        }[canonical_department]
-        query = query.filter(func.lower(func.trim(model.department)).in_(aliases))
+            "BCA": ["bca", "bachelor of computer applications", "bachelor of computer application", "b.c.a", "b.c.a."],
+        }
+        dept_aliases = aliases_map.get(
+            canonical_department,
+            [canonical_department.strip().lower(), effective_dept.strip().lower()] if effective_dept else [canonical_department.strip().lower()]
+        )
+        query = query.filter(func.lower(func.trim(model.department)).in_(dept_aliases))
     if effective_sec and hasattr(model, "section"):
-        query = query.filter(func.lower(func.trim(model.section)) == effective_sec.strip().lower())
+        sec_aliases = _normalize_section_aliases(effective_sec)
+        query = query.filter(func.lower(func.trim(model.section)).in_(sec_aliases))
+    if semester and semester.strip() and semester.strip().lower() != "all" and hasattr(model, "semester"):
+        sem_clean = semester.strip()
+        sem_variants = [sem_clean.lower()]
+        if sem_clean.lower().startswith("semester"):
+            num_part = sem_clean[len("semester"):].strip()
+            if num_part:
+                sem_variants.append(num_part.lower())
+        else:
+            sem_variants.append(f"semester {sem_clean.lower()}")
+        query = query.filter(func.lower(func.trim(model.semester)).in_(sem_variants))
     return query
 
 
-def get_available_sections(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None) -> List[Dict[str, str]]:
-    student_query = _apply_scope(db.query(models.StudentUpload.section, models.StudentUpload.department), models.StudentUpload, academic_year, department)
-    attendance_query = _apply_scope(db.query(models.StudentAttendance.section, models.StudentAttendance.department), models.StudentAttendance, academic_year, department)
+def get_available_sections(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, semester: Optional[str] = None) -> List[Dict[str, str]]:
+    student_query = _apply_scope(db.query(models.StudentUpload.section, models.StudentUpload.department), models.StudentUpload, academic_year, department, semester=semester)
+    attendance_query = _apply_scope(db.query(models.StudentAttendance.section, models.StudentAttendance.department), models.StudentAttendance, academic_year, department, semester=semester)
+    mark_query = _apply_scope(db.query(models.StudentMark.section, models.StudentMark.department), models.StudentMark, academic_year, department, semester=semester)
 
     seen = set()
     results = []
-    for sec_val, dept_val in student_query.all() + attendance_query.all():
+    for sec_val, dept_val in student_query.all() + attendance_query.all() + mark_query.all():
         if not sec_val or not str(sec_val).strip():
             continue
         sec_clean = str(sec_val).strip().upper()
         canonical_dept = canonicalize_department_name(dept_val) or (str(dept_val).strip() if dept_val else "Unknown")
         composite_key = (sec_clean, canonical_dept)
-        if composite_key in seen:
-            continue
-        seen.add(composite_key)
-        results.append({
-            "section": sec_clean,
-            "department": canonical_dept,
-            "label": f"Section {sec_clean} ({canonical_dept})",
-            "value": f"{sec_clean}::{canonical_dept}"
-        })
+        if composite_key not in seen:
+            seen.add(composite_key)
+            results.append({
+                "section": sec_clean,
+                "department": canonical_dept,
+                "label": f"Section {sec_clean} ({canonical_dept})",
+                "value": f"{sec_clean}::{canonical_dept}"
+            })
+        
+        # Support CSEM-3 option for BCA when section C is present
+        if canonical_dept == "BCA" and sec_clean == "C":
+            csem_key = ("CSEM-3", canonical_dept)
+            if csem_key not in seen:
+                seen.add(csem_key)
+                results.append({
+                    "section": "CSEM-3",
+                    "department": canonical_dept,
+                    "label": f"Section CSEM-3 ({canonical_dept})",
+                    "value": f"CSEM-3::{canonical_dept}"
+                })
 
     results.sort(key=lambda x: (x["department"].lower(), x["section"].lower()))
     return results
@@ -1650,6 +1953,7 @@ def get_department_overview(db: Session) -> List[Dict[str, Any]]:
     target_departments = [
         "Computer Science and Engineering",
         "AI & Data Science",
+        "BCA",
     ]
 
     student_sets = {name: set() for name in target_departments}
@@ -1693,26 +1997,56 @@ def get_student_faculty_ratio(db: Session, academic_year: Optional[str] = None) 
     return round(total_students / float(total_faculty), 2)
 
 
+def get_marks_subjects(
+    db: Session,
+    academic_year: Optional[str] = None,
+    department: Optional[str] = None,
+    section: Optional[str] = None,
+    semester: Optional[str] = None,
+) -> List[str]:
+    norm_year = normalize_academic_year(academic_year) if academic_year else None
+
+    query = db.query(models.StudentMark.subject).distinct()
+    query = _apply_scope(query, models.StudentMark, academic_year=norm_year, department=department, section=section, semester=semester)
+    rows = query.all()
+    subjects = []
+    seen = set()
+    for row in rows:
+        val = row[0]
+        if val and str(val).strip():
+            clean_s = str(val).strip()
+            if clean_s.lower() not in seen:
+                seen.add(clean_s.lower())
+                subjects.append(clean_s)
+
+    # Also check StudentUpload.subject_marks_json
+    upload_query = db.query(models.StudentUpload.subject_marks_json).distinct()
+    upload_query = _apply_scope(upload_query, models.StudentUpload, academic_year=norm_year, department=department, section=section, semester=semester)
+    for (sm_json,) in upload_query.all():
+        if sm_json:
+            try:
+                data = json.loads(sm_json) if isinstance(sm_json, str) else sm_json
+                if isinstance(data, dict):
+                    for k in data.keys():
+                        clean_k = str(k).strip()
+                        if clean_k and clean_k.lower() not in seen:
+                            seen.add(clean_k.lower())
+                            subjects.append(clean_k)
+            except Exception:
+                pass
+
+    return sorted(subjects, key=lambda s: s.lower())
+
+
 def get_pass_percentage_kpi(
     db: Session,
     academic_year: Optional[str] = "2024-2025",
     department: Optional[str] = None,
     section: Optional[str] = None,
-    semester: Optional[str] = None
+    semester: Optional[str] = None,
+    subject: Optional[str] = None
 ) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year) or "2024-2025"
-    
-    query = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, norm_year, department, section)
-    if semester and semester.strip() and semester.strip().lower() != "all":
-        query = query.filter(func.lower(func.trim(models.StudentUpload.semester)) == semester.strip().lower())
-    
-    all_students = query.all()
-    total_count = len(all_students)
-
-    # A student is evaluated if they have recorded subject marks
-    evaluated_students = [s for s in all_students if s.subject_marks and len(s.subject_marks) > 0]
-    total_evaluated = len(evaluated_students)
-    uncalculated_count = total_count - total_evaluated
 
     # Subject code map
     SUBJECT_CODE_MAP = {
@@ -1743,6 +2077,130 @@ def get_pass_percentage_kpi(
         "machine learning": ("ML", "Machine Learning"),
     }
 
+    def _get_code_and_name(s_name: str) -> Tuple[str, str]:
+        s_lower = s_name.strip().lower()
+        if s_lower in SUBJECT_CODE_MAP:
+            return SUBJECT_CODE_MAP[s_lower]
+        if len(s_name.strip()) <= 6:
+            return (s_name.strip(), s_name.strip())
+        words = s_name.strip().split()
+        if len(words) > 1:
+            code = "".join(w[0].upper() for w in words if w)
+        else:
+            code = s_name.strip()[:4].upper()
+        return (code, s_name.strip())
+
+    # Subject-specific pass percentage calculation
+    if subject and subject.strip() and subject.strip().lower() != "all":
+        selected_subj = subject.strip()
+        code, full_name = _get_code_and_name(selected_subj)
+        target_keys = {selected_subj.lower(), code.lower(), full_name.lower()}
+
+        # 1. Look in StudentMark table first as primary record of individual subject marks
+        mark_q = db.query(models.StudentMark)
+        mark_q = _apply_scope(mark_q, models.StudentMark, academic_year=norm_year, department=department, section=section, semester=semester)
+        all_marks = mark_q.all()
+
+        matching_marks = [
+            m for m in all_marks
+            if m.subject and m.subject.strip().lower() in target_keys
+        ]
+
+        if matching_marks:
+            seen_students = set()
+            student_records = []
+            for m in matching_marks:
+                sid = (m.enrollment_number or m.student_id or "").strip().upper()
+                if sid not in seen_students:
+                    seen_students.add(sid)
+                    student_records.append((sid, m.student_name, float(m.total or 0.0)))
+
+            sub_total = len(student_records)
+            passed = sum(1 for (_, _, tot) in student_records if tot >= 40.0)
+            failed = sub_total - passed
+            pass_pct = round((passed / float(sub_total)) * 100.0, 2) if sub_total > 0 else 0.0
+            fail_pct = round((failed / float(sub_total)) * 100.0, 2) if sub_total > 0 else 0.0
+        else:
+            # Fallback to StudentUpload table
+            def get_student_mark_for_subject(student, target_subj):
+                sm = student.subject_marks
+                if not sm or not isinstance(sm, dict):
+                    return None
+                for k, v in sm.items():
+                    if str(k).strip().lower() in target_keys:
+                        try:
+                            return float(v)
+                        except (ValueError, TypeError):
+                            return None
+                return None
+
+            upload_q = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, academic_year=norm_year, department=department, section=section, semester=semester)
+            all_uploads = upload_q.all()
+            student_records = []
+            for u in all_uploads:
+                mark = get_student_mark_for_subject(u, selected_subj)
+                if mark is not None:
+                    student_records.append((u.studentId, u.studentName, float(mark)))
+
+            sub_total = len(student_records)
+            if sub_total > 0:
+                passed = sum(1 for (_, _, tot) in student_records if tot >= 40.0)
+                failed = sub_total - passed
+                pass_pct = round((passed / float(sub_total)) * 100.0, 2)
+                fail_pct = round((failed / float(sub_total)) * 100.0, 2)
+            else:
+                passed = 0
+                failed = 0
+                pass_pct = 0.0
+                fail_pct = 0.0
+
+        subjects_data = [{
+            "subject": code,
+            "subject_name": full_name,
+            "passed": passed,
+            "failed": failed,
+            "total": sub_total,
+            "pass_percentage": pass_pct,
+            "fail_percentage": fail_pct,
+        }]
+
+        sem_label = f" ({semester})" if semester and semester != "All" else ""
+        return {
+            "academic_year": norm_year,
+            "academicYear": norm_year,
+            "semester": semester or "All",
+            "department": department or "All",
+            "section": section or "All",
+            "subject": selected_subj,
+            "subject_name": full_name,
+            "total_students_evaluated": sub_total,
+            "total_students_count": sub_total,
+            "uncalculated_count": 0,
+            "overall": {
+                "passed": passed,
+                "failed": failed,
+                "total": sub_total,
+                "pass_percentage": pass_pct,
+                "fail_percentage": fail_pct,
+            },
+            "subjects": subjects_data,
+            "overall_pass_percentage": pass_pct,
+            "overall_fail_percentage": fail_pct,
+            "message": None if sub_total > 0 else f"No evaluated marks found for subject '{selected_subj}' in Academic Year {norm_year}{sem_label}."
+        }
+
+    query = _apply_scope(db.query(models.StudentUpload), models.StudentUpload, norm_year, department, section)
+    if semester and semester.strip() and semester.strip().lower() != "all":
+        query = query.filter(func.lower(func.trim(models.StudentUpload.semester)) == semester.strip().lower())
+    
+    all_students = query.all()
+    total_count = len(all_students)
+
+    # A student is evaluated if they have recorded subject marks
+    evaluated_students = [s for s in all_students if s.subject_marks and len(s.subject_marks) > 0]
+    total_evaluated = len(evaluated_students)
+    uncalculated_count = total_count - total_evaluated
+
     # Discover subjects for this cohort
     configured_subjects = []
     if department and section and semester and semester.strip().lower() != "all":
@@ -1763,23 +2221,9 @@ def get_pass_percentage_kpi(
                 detected_subjects_order.append(subj)
 
     if not detected_subjects_order:
-        if semester and semester.strip() in SEMESTER_CONFIGS.get("AIDS", {}).get("A", {}).get("2024-2025", {}):
+        canon_dept = canonicalize_department_name(department) if department else None
+        if (not canon_dept or canon_dept == "AI & Data Science") and semester and semester.strip() in SEMESTER_CONFIGS.get("AIDS", {}).get("A", {}).get("2024-2025", {}):
             detected_subjects_order = SEMESTER_CONFIGS["AIDS"]["A"]["2024-2025"][semester.strip()]
-        else:
-            detected_subjects_order = ["Computer Programming", "Basic Electronics", "English", "Digital Fabrication", "Chemistry"]
-
-    def _get_code_and_name(s_name: str) -> Tuple[str, str]:
-        s_lower = s_name.strip().lower()
-        if s_lower in SUBJECT_CODE_MAP:
-            return SUBJECT_CODE_MAP[s_lower]
-        if len(s_name.strip()) <= 5:
-            return (s_name.strip(), s_name.strip())
-        words = s_name.strip().split()
-        if len(words) > 1:
-            code = "".join(w[0].upper() for w in words if w)
-        else:
-            code = s_name.strip()[:4].upper()
-        return (code, s_name.strip())
 
     if total_evaluated == 0:
         subjects_data = []
@@ -1796,10 +2240,15 @@ def get_pass_percentage_kpi(
             })
 
         sem_label = f" ({semester})" if semester and semester != "All" else ""
+        dept_label = f" • {department}" if department and department != "All" else ""
         return {
             "academic_year": norm_year,
             "academicYear": norm_year,
             "semester": semester or "All",
+            "department": department or "All",
+            "section": section or "All",
+            "subject": "All",
+            "subject_name": "All Subjects",
             "total_students_evaluated": 0,
             "total_students_count": total_count,
             "uncalculated_count": uncalculated_count,
@@ -1813,20 +2262,47 @@ def get_pass_percentage_kpi(
             "subjects": subjects_data,
             "overall_pass_percentage": 0.0,
             "overall_fail_percentage": 0.0,
-            "message": f"No evaluated student marks found for Academic Year {norm_year}{sem_label}. Please upload student marks sheet to view Pass Percentage KPI."
+            "message": f"No evaluated student marks found for Academic Year {norm_year}{dept_label}{sem_label}. Please upload student marks sheet to view Pass Percentage KPI."
         }
+
+    def _extract_subject_mark(subject_marks: Optional[dict], target_subj: str, target_code: Optional[str] = None) -> Optional[float]:
+        if not subject_marks or not isinstance(subject_marks, dict):
+            return None
+        if target_subj in subject_marks and subject_marks[target_subj] is not None:
+            try:
+                return float(subject_marks[target_subj])
+            except (ValueError, TypeError):
+                pass
+        if target_code and target_code in subject_marks and subject_marks[target_code] is not None:
+            try:
+                return float(subject_marks[target_code])
+            except (ValueError, TypeError):
+                pass
+        clean_target = target_subj.strip().lower()
+        clean_code = target_code.strip().lower() if target_code else None
+        for k, v in subject_marks.items():
+            if v is None:
+                continue
+            k_clean = str(k).strip().lower()
+            if k_clean == clean_target or (clean_code and k_clean == clean_code):
+                try:
+                    return float(v)
+                except (ValueError, TypeError):
+                    pass
+        return None
 
     subjects_data = []
     for subj in detected_subjects_order:
         code, full_name = _get_code_and_name(subj)
-        students_with_subj = [s for s in evaluated_students if s.subject_marks and (subj in s.subject_marks or code in s.subject_marks)]
+        student_marks_for_subj = []
+        for s in evaluated_students:
+            val = _extract_subject_mark(s.subject_marks, subj, code)
+            if val is not None:
+                student_marks_for_subj.append(val)
         
-        if students_with_subj:
-            sub_total = len(students_with_subj)
-            passed = sum(
-                1 for s in students_with_subj 
-                if float(s.subject_marks.get(subj, s.subject_marks.get(code, 0))) >= 40.0
-            )
+        if student_marks_for_subj:
+            sub_total = len(student_marks_for_subj)
+            passed = sum(1 for tot in student_marks_for_subj if tot >= 40.0)
             failed = sub_total - passed
         else:
             sub_total = total_evaluated
@@ -1850,7 +2326,14 @@ def get_pass_percentage_kpi(
     overall_passed = 0
     for s in evaluated_students:
         marks = s.subject_marks or {}
-        if marks and all(float(val) >= 40.0 for val in marks.values() if val is not None):
+        numeric_marks = []
+        for val in marks.values():
+            if val is not None:
+                try:
+                    numeric_marks.append(float(val))
+                except (ValueError, TypeError):
+                    pass
+        if numeric_marks and all(m >= 40.0 for m in numeric_marks):
             overall_passed += 1
 
     overall_failed = total_evaluated - overall_passed
@@ -1861,6 +2344,10 @@ def get_pass_percentage_kpi(
         "academic_year": norm_year,
         "academicYear": norm_year,
         "semester": semester or "All",
+        "department": department or "All",
+        "section": section or "All",
+        "subject": "All",
+        "subject_name": "All Subjects",
         "total_students_evaluated": total_evaluated,
         "total_students_count": total_count,
         "uncalculated_count": uncalculated_count,
@@ -2021,8 +2508,9 @@ def create_kpi(db: Session, kpi_data: Dict[str, Any]) -> models.KPI:
 
 
 # Student Attendance CRUD Services
-def get_all_attendance(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> List[models.StudentAttendance]:
-    query = _apply_scope(db.query(models.StudentAttendance), models.StudentAttendance, academic_year, department, section)
+def get_all_attendance(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None, semester: Optional[str] = None) -> List[models.StudentAttendance]:
+    norm_sem = normalize_semester(semester)
+    query = _apply_scope(db.query(models.StudentAttendance), models.StudentAttendance, academic_year, department, section, semester=norm_sem)
     records = query.order_by(models.StudentAttendance.id.asc()).all()
     default_subjects = [
         "Power Skills - III",
@@ -2038,7 +2526,12 @@ def get_all_attendance(db: Session, academic_year: Optional[str] = None, departm
         if record.average_attendance is None:
             record.average_attendance = record.attendance_percentage or 0.0
         if not record.subjects_json or record.subjects_json == '[]':
-            record.subjects_json = json.dumps(default_subjects)
+            rec_sem = record.semester or norm_sem
+            if rec_sem and rec_sem in SEMESTER_CONFIGS.get("AIDS", {}).get("A", {}).get("2024-2025", {}):
+                record_subjs = SEMESTER_CONFIGS["AIDS"]["A"]["2024-2025"][rec_sem]
+            else:
+                record_subjs = default_subjects
+            record.subjects_json = json.dumps(record_subjs)
         if not record.subject_values_json or record.subject_values_json == '{}':
             pct = record.attendance_percentage or 75.0
             id_hash = sum(ord(ch) for ch in str(record.student_id)) % 7 - 3
@@ -2056,25 +2549,28 @@ def get_all_attendance(db: Session, academic_year: Optional[str] = None, departm
     return records
 
 
-def get_attendance_subjects(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> List[str]:
-    query = _apply_scope(db.query(models.StudentAttendance.subjects_json), models.StudentAttendance, academic_year, department, section)
+def get_attendance_subjects(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None, semester: Optional[str] = None) -> List[str]:
+    norm_sem = normalize_semester(semester)
+    query = _apply_scope(db.query(models.StudentAttendance.subjects_json), models.StudentAttendance, academic_year, department, section, semester=norm_sem)
     rows = query.order_by(models.StudentAttendance.id.desc()).first()
     if not rows or not rows[0]:
         return []
     return json.loads(rows[0])
 
 
-def get_attendance_kpi(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None) -> Dict[str, Any]:
+def get_attendance_kpi(db: Session, academic_year: Optional[str] = None, department: Optional[str] = None, section: Optional[str] = None, semester: Optional[str] = None) -> Dict[str, Any]:
     norm_year = normalize_academic_year(academic_year)
-    records = get_all_attendance(db, academic_year=norm_year, department=department, section=section)
+    norm_sem = normalize_semester(semester)
+    records = get_all_attendance(db, academic_year=norm_year, department=department, section=section, semester=norm_sem)
     values = [record.average_attendance for record in records]
     return {
         'total_students': len(records),
         'overall_average_attendance': round(sum(values) / len(values), 2) if values else 0.0,
         'highest_attendance': max(values) if values else 0.0,
         'lowest_attendance': min(values) if values else 0.0,
-        'subjects': get_attendance_subjects(db, academic_year=norm_year, department=department, section=section),
+        'subjects': get_attendance_subjects(db, academic_year=norm_year, department=department, section=section, semester=norm_sem),
         'academic_year': norm_year,
+        'semester': norm_sem,
     }
 
 
