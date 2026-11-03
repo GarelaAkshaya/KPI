@@ -142,7 +142,12 @@ def _migrate_sqlite_feedback_table(conn):
             learning_resources INTEGER NULL,
             faculty_support INTEGER NULL,
             overall_satisfaction INTEGER NULL,
-            comment TEXT NULL
+            comment TEXT NULL,
+            semester VARCHAR NULL,
+            course_difficulty VARCHAR NULL,
+            google_sheet_response_hash VARCHAR NULL UNIQUE,
+            improvement_areas TEXT NULL,
+            suggestions TEXT NULL
         )
         """
     )
@@ -197,12 +202,18 @@ def _migrate_sqlite_feedback_table(conn):
         source("faculty_support"),
         source("overall_satisfaction"),
         source("comment"),
+        source("semester"),
+        source("course_difficulty"),
+        source("google_sheet_response_hash"),
+        source("improvement_areas"),
+        source("suggestions"),
     ]
     target_columns = (
         "id, faculty_id, department_id, academic_year, subject, teaching_quality, "
         "subject_knowledge, communication_skills, student_interaction, overall_rating, "
         "comments, token_id, created_at, department, faculty_rating, course_content, "
-        "learning_resources, faculty_support, overall_satisfaction, comment"
+        "learning_resources, faculty_support, overall_satisfaction, comment, "
+        "semester, course_difficulty, google_sheet_response_hash, improvement_areas, suggestions"
     )
     conn.exec_driver_sql(
         f"INSERT INTO student_feedback_new ({target_columns}) "
@@ -307,6 +318,11 @@ def init_db():
                     if col.name.lower() not in existing_cols:
                         col_type = col.type.compile(engine.dialect)
                         conn.exec_driver_sql(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS "{col.name}" {col_type}')
+            for col_name in ["course_content", "learning_resources", "faculty_support", "teaching_quality", "overall_satisfaction"]:
+                try:
+                    conn.exec_driver_sql(f'ALTER TABLE "student_feedback" ALTER COLUMN "{col_name}" DROP NOT NULL')
+                except Exception:
+                    pass
 
         if engine.dialect.name == "sqlite":
             conn.exec_driver_sql(

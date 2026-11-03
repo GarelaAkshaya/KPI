@@ -22,8 +22,6 @@ import services
 
 VALID_ACADEMIC_YEARS = {"2024-2025", "2025-2026"}
 VALID_SEMESTERS = {f"Semester {i}" for i in range(1, 9)}
-_feedback_rate_limit_lock = threading.Lock()
-_feedback_rate_limit_events = {}
 
 # Create database tables automatically and apply any missing column migrations
 database.init_db()
@@ -70,226 +68,6 @@ def get_current_admin(
     return admin
 
 
-def _check_public_feedback_rate_limit(request: Request, action: str, limit: int, window: int = 60):
-    client_ip = request.client.host if request.client else "unknown"
-    key = (action, client_ip)
-    now = time.monotonic()
-    cutoff = now - window
-    with _feedback_rate_limit_lock:
-        recent = [timestamp for timestamp in _feedback_rate_limit_events.get(key, []) if timestamp > cutoff]
-        if len(recent) >= limit:
-            retry_after = max(1, math.ceil(window - (now - recent[0])))
-            _feedback_rate_limit_events[key] = recent
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many feedback requests. Please try again later.",
-                headers={"Retry-After": str(retry_after)},
-            )
-        recent.append(now)
-        _feedback_rate_limit_events[key] = recent
-        if len(_feedback_rate_limit_events) > 10000:
-            for existing_key, timestamps in list(_feedback_rate_limit_events.items()):
-                if not timestamps or timestamps[-1] <= cutoff:
-                    del _feedback_rate_limit_events[existing_key]
-
-
-def rate_limit_public_feedback_read(request: Request):
-    _check_public_feedback_rate_limit(request, "read", 120)
-
-
-def rate_limit_public_feedback_validate(request: Request):
-    _check_public_feedback_rate_limit(request, "validate", 10)
-
-
-def rate_limit_public_feedback_submit(request: Request):
-    _check_public_feedback_rate_limit(request, "submit", 5)
-
-
-def _active_feedback_academic_year() -> str:
-    configured_year = os.getenv("ACTIVE_ACADEMIC_YEAR", "").strip()
-    if configured_year:
-        try:
-            normalized = services.normalize_academic_year(configured_year)
-        except ValueError as error:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="ACTIVE_ACADEMIC_YEAR is not a supported academic year.",
-            ) from error
-        if normalized not in VALID_ACADEMIC_YEARS:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="ACTIVE_ACADEMIC_YEAR is not a supported academic year.",
-            )
-        return normalized
-    return max(VALID_ACADEMIC_YEARS, key=lambda year: int(year[:4]))
-
-
-def _normalize_feedback_year(academic_year: str) -> str:
-    try:
-        normalized = services.normalize_academic_year(academic_year)
-    except ValueError as error:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid academic year.") from error
-    if normalized not in VALID_ACADEMIC_YEARS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid academic year.")
-    return normalized
-
-
-def _department_matches_faculty(department: models.Department, faculty: models.Faculty) -> bool:
-    faculty_department = (faculty.department or "").strip().casefold()
-    return faculty_department in {
-        (department.name or "").strip().casefold(),
-        (department.code or "").strip().casefold(),
-    }
-
-
-def _get_public_feedback_scope(db: Session, department_id: int, faculty_id: str):
-    department = db.query(models.Department).filter(models.Department.id == department_id).first()
-    faculty = db.query(models.Faculty).filter(
-        models.Faculty.faculty_id == faculty_id.strip()
-    ).first()
-    if department is None or faculty is None or not _department_matches_faculty(department, faculty):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The selected faculty and department do not match.")
-    return department, faculty
-
-
-@app.get(
-    "/api/public/feedback/departments",
-    response_model=List[schemas.PublicFeedbackDepartment],
-    dependencies=[Depends(rate_limit_public_feedback_read)],
-)
-def get_public_feedback_departments(db: Session = Depends(database.get_db)):
-    return [
-        {"id": department.id, "code": department.code, "name": department.name}
-        for department in db.query(models.Department).order_by(models.Department.name).all()
-    ]
-
-
-@app.get(
-    "/api/public/feedback/faculty/",
-    response_model=List[schemas.PublicFeedbackFaculty],
-    dependencies=[Depends(rate_limit_public_feedback_read)],
-)
-def get_public_feedback_faculty(
-    department_id: int = Query(..., gt=0),
-    db: Session = Depends(database.get_db),
-):
-    department = db.query(models.Department).filter(models.Department.id == department_id).first()
-    if department is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department was not found.")
-    faculty = db.query(models.Faculty).order_by(models.Faculty.name).all()
-    return [
-        {
-            "faculty_id": member.faculty_id,
-            "name": member.name,
-            "designation": member.designation,
-            "department_id": department.id,
-        }
-        for member in faculty
-        if _department_matches_faculty(department, member)
-    ]
-
-
-@app.get(
-    "/api/public/feedback/academic-year",
-    dependencies=[Depends(rate_limit_public_feedback_read)],
-)
-def get_public_feedback_academic_year():
-    return {"academic_year": _active_feedback_academic_year()}
-
-
-@app.post(
-    "/api/public/feedback/validate-token",
-    dependencies=[Depends(rate_limit_public_feedback_validate)],
-)
-def validate_public_feedback_token(
-    request: schemas.PublicFeedbackTokenRequest,
-    db: Session = Depends(database.get_db),
-):
-    year = _normalize_feedback_year(request.academic_year)
-    _, faculty = _get_public_feedback_scope(db, request.department_id, request.faculty_id)
-    token = db.query(models.AnonymousFeedbackToken).filter(
-        models.AnonymousFeedbackToken.token_hash == services.hash_feedback_code(request.feedback_code),
-        models.AnonymousFeedbackToken.faculty_id == faculty.faculty_id,
-        models.AnonymousFeedbackToken.academic_year == year,
-    ).first()
-    if token is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Feedback code is invalid for this selection.")
-    if token.used:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This feedback code has already been used.")
-    return {"valid": True, "faculty_id": faculty.faculty_id, "academic_year": year}
-
-
-@app.post(
-    "/api/public/feedback/submit",
-    response_model=schemas.StudentFeedbackSubmissionResponse,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(rate_limit_public_feedback_submit)],
-)
-def submit_public_feedback(
-    request: schemas.PublicStudentFeedbackCreate,
-    db: Session = Depends(database.get_db),
-):
-    year = _normalize_feedback_year(request.academic_year)
-    department, faculty = _get_public_feedback_scope(db, request.department_id, request.faculty_id)
-    token_hash = services.hash_feedback_code(request.feedback_code)
-    token = db.query(models.AnonymousFeedbackToken).filter(
-        models.AnonymousFeedbackToken.token_hash == token_hash,
-        models.AnonymousFeedbackToken.faculty_id == faculty.faculty_id,
-        models.AnonymousFeedbackToken.academic_year == year,
-    ).first()
-    if token is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Feedback code is invalid for this selection.")
-    submitted_at = datetime.utcnow()
-    record = models.StudentFeedback(
-        faculty_id=faculty.faculty_id,
-        department_id=department.id,
-        department=faculty.department,
-        academic_year=year,
-        subject=request.subject.strip(),
-        teaching_quality=request.teaching_quality,
-        subject_knowledge=request.subject_knowledge,
-        communication_skills=request.communication_skills,
-        student_interaction=request.student_interaction,
-        overall_rating=request.overall_rating,
-        comments=request.comments.strip() if request.comments else None,
-        token_id=token.id,
-        created_at=submitted_at,
-        faculty_rating=request.overall_rating,
-        course_content=request.subject_knowledge,
-        learning_resources=request.communication_skills,
-        faculty_support=request.student_interaction,
-        overall_satisfaction=max(0, min(5, round(request.overall_rating / 2))),
-        comment=request.comments.strip() if request.comments else None,
-    )
-    try:
-        updated = db.query(models.AnonymousFeedbackToken).filter(
-            models.AnonymousFeedbackToken.id == token.id,
-            models.AnonymousFeedbackToken.used == 0,
-        ).update(
-            {
-                models.AnonymousFeedbackToken.used: 1,
-                models.AnonymousFeedbackToken.used_at: submitted_at,
-            },
-            synchronize_session=False,
-        )
-        if updated != 1:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This feedback code has already been used.")
-        db.add(record)
-        db.commit()
-    except HTTPException:
-        db.rollback()
-        raise
-    except OperationalError as error:
-        db.rollback()
-        if "locked" in str(error).casefold() or "busy" in str(error).casefold():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This feedback code is being redeemed.")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save feedback.")
-    except Exception as error:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save feedback.") from error
-    return {"message": "Feedback submitted successfully."}
-
-
 @app.post("/api/auth/login", response_model=schemas.TokenResponse)
 def login_admin(payload: schemas.AdminLoginRequest, db: Session = Depends(database.get_db)):
     user = services.authenticate_admin(db, payload.username.strip(), payload.password)
@@ -331,198 +109,14 @@ def get_stats(
         )
 
 
-@app.post(
-    "/api/feedback",
-    response_model=schemas.StudentFeedbackSubmissionResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def submit_student_feedback(
-    feedback: schemas.StudentFeedbackCreate,
-    db: Session = Depends(database.get_db),
-):
-    """Consume one anonymous faculty/year token and store feedback without the token."""
-    token_hash = services.hash_feedback_code(feedback.token)
-    token = db.query(models.AnonymousFeedbackToken).filter(
-        models.AnonymousFeedbackToken.token_hash == token_hash
-    ).first()
-    if token is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Feedback token is invalid.")
-    if token.used:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This feedback token has already been used.")
-
-    faculty = db.query(models.Faculty).filter(models.Faculty.faculty_id == token.faculty_id).first()
-    if faculty is None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The faculty associated with this token is unavailable.")
-
-    department = db.query(models.Department).filter(
-        or_(
-            func.lower(func.trim(models.Department.name)) == faculty.department.strip().lower(),
-            func.lower(func.trim(models.Department.code)) == faculty.department.strip().lower(),
-        )
-    ).first()
-    submitted_at = datetime.utcnow()
-    record = models.StudentFeedback(
-        academic_year=token.academic_year,
-        subject=feedback.subject.strip(),
-        teaching_quality=feedback.teaching_quality,
-        subject_knowledge=feedback.subject_knowledge,
-        communication_skills=feedback.communication_skills,
-        student_interaction=feedback.student_interaction,
-        overall_rating=feedback.overall_rating,
-        comments=feedback.comments,
-        token_id=token.id,
-        created_at=submitted_at,
-        department_id=department.id if department else None,
-        faculty_id=faculty.faculty_id,
-        department=faculty.department,
-        faculty_rating=feedback.overall_rating,
-        course_content=feedback.subject_knowledge,
-        learning_resources=feedback.communication_skills,
-        faculty_support=feedback.student_interaction,
-        overall_satisfaction=max(1, min(5, round(feedback.overall_rating / 2))),
-        comment=feedback.comments,
-    )
-    try:
-        updated = db.query(models.AnonymousFeedbackToken).filter(
-            models.AnonymousFeedbackToken.id == token.id,
-            models.AnonymousFeedbackToken.used == 0,
-        ).update(
-            {
-                models.AnonymousFeedbackToken.used: 1,
-                models.AnonymousFeedbackToken.used_at: submitted_at,
-            },
-            synchronize_session=False,
-        )
-        if updated != 1:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This feedback token has already been used.",
-            )
-        db.add(record)
-        db.commit()
-    except HTTPException:
-        db.rollback()
-        raise
-    except OperationalError as error:
-        db.rollback()
-        if "locked" in str(error).casefold() or "busy" in str(error).casefold():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This feedback code is being redeemed. Check its status and retry if needed.",
-            )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save student feedback.",
-        )
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save student feedback: {str(e)}",
-        )
-    return {"message": "Feedback submitted successfully."}
-
-
-@app.post(
-    "/api/feedback/validate-code",
-    response_model=schemas.FeedbackCodeValidationResponse,
-)
-def validate_feedback_code(
-    request: schemas.FeedbackCodeValidationRequest,
-    db: Session = Depends(database.get_db),
-):
-    """Resolve an unused token to the faculty and academic year it covers."""
-    token_hash = services.hash_feedback_code(request.token)
-    token = db.query(models.AnonymousFeedbackToken).filter(
-        models.AnonymousFeedbackToken.token_hash == token_hash
-    ).first()
-    if token is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Feedback token is invalid.")
-    if token.used:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This feedback token has already been used.")
-    faculty = db.query(models.Faculty).filter(models.Faculty.faculty_id == token.faculty_id).first()
-    if faculty is None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The faculty associated with this code is unavailable.")
-    return {
-        "academic_year": token.academic_year,
-        "faculty_id": faculty.faculty_id,
-        "faculty_name": faculty.name,
-        "department": faculty.department,
-        "designation": faculty.designation,
-    }
-
-
-@app.post("/api/admin/feedback/tokens", response_class=StreamingResponse)
-@app.post("/api/feedback/tokens/issue", response_class=StreamingResponse)
-def issue_feedback_codes(
-    request: schemas.FeedbackCodeIssueRequest,
-    db: Session = Depends(database.get_db),
-    _: models.AdminUser = Depends(get_current_admin),
-):
-    """Generate an admin-only batch of unique, single-use codes for faculty/year."""
-    try:
-        academic_year = services.normalize_academic_year(request.academic_year)
-    except ValueError as error:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
-    if academic_year not in VALID_ACADEMIC_YEARS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A supported academic year is required.")
-
-    faculty = db.query(models.Faculty).filter(
-        models.Faculty.faculty_id == request.faculty_id.strip()
-    ).first()
-    if faculty is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Faculty member was not found.")
-
-    code_rows = []
-    try:
-        for _ in range(request.count):
-            plaintext_token = secrets.token_urlsafe(32)
-            db.add(models.AnonymousFeedbackToken(
-                token_hash=services.hash_feedback_code(plaintext_token),
-                faculty_id=faculty.faculty_id,
-                academic_year=academic_year,
-                used=0,
-            ))
-            code_rows.append(plaintext_token)
-        db.commit()
-    except IntegrityError as error:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A token hash collision occurred. Retry issuing the batch.",
-        ) from error
-    except Exception as error:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to issue feedback tokens: {str(error)}",
-        )
-
-    output = io.StringIO(newline="")
-    writer = csv.writer(output)
-    writer.writerow(("faculty_id", "faculty_name", "department", "academic_year", "feedback_token"))
-    for plaintext_token in code_rows:
-        writer.writerow((
-            faculty.faculty_id,
-            faculty.name,
-            faculty.department,
-            academic_year,
-            plaintext_token,
-        ))
-    filename = f"ifhe-feedback-tokens-{academic_year}.csv"
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
 @app.get("/api/admin/feedback/summary", response_model=schemas.StudentFeedbackSummaryResponse)
 @app.get("/api/feedback/summary", response_model=schemas.StudentFeedbackSummaryResponse)
 def get_student_feedback_summary(
     academic_year: Optional[str] = None,
     department: Optional[str] = None,
     section: Optional[str] = None,
+    semester: Optional[str] = None,
+    subject: Optional[str] = None,
     db: Session = Depends(database.get_db),
     _: models.AdminUser = Depends(get_current_admin),
 ):
@@ -530,32 +124,83 @@ def get_student_feedback_summary(
     sec_name, sec_dept = services.parse_section_identifier(section)
     effective_dept = department or sec_dept
     effective_sec = sec_name if sec_name is not None else section
-    base_query = services._apply_scope(db.query(models.StudentFeedback), models.StudentFeedback, department=effective_dept)
-    norm_year = services.normalize_academic_year(academic_year)
-    selected_department = effective_dept.strip() if effective_dept and effective_dept.strip() else None
-    if effective_sec and effective_sec.strip():
-        # Feedback records have no section field; return an empty scoped result
-        # instead of accidentally mixing feedback from other sections.
-        base_query = base_query.filter(models.StudentFeedback.id == -1)
 
-    all_responses = base_query.count()
-    unattributed_responses = base_query.filter(
+    # Normalize academic year if supplied and not 'all'
+    norm_year = None
+    if academic_year and academic_year.strip() and academic_year.strip().lower() not in {"all", "all years", "all_years"}:
+        try:
+            norm_year = services.normalize_academic_year(academic_year)
+        except ValueError:
+            norm_year = academic_year.strip()
+
+    # Base query
+    query = db.query(models.StudentFeedback)
+
+    all_responses = db.query(models.StudentFeedback).count()
+    unattributed_responses = db.query(models.StudentFeedback).filter(
         or_(
             models.StudentFeedback.academic_year.is_(None),
             func.trim(models.StudentFeedback.academic_year) == "",
         )
     ).count()
-    query = base_query
+
+    # 1. Year filter
     if norm_year:
         query = query.filter(models.StudentFeedback.academic_year == norm_year)
-    selected_year_responses = query.count()
+
+    # 2. Department filter
+    selected_department = None
+    if effective_dept and effective_dept.strip() and effective_dept.strip().lower() not in {"all", "all departments", "all_departments"}:
+        selected_department = effective_dept.strip()
+        dept_canon = services.canonicalize_department_name(selected_department)
+        dept_rec = db.query(models.Department).filter(
+            or_(
+                func.lower(func.trim(models.Department.name)) == selected_department.lower(),
+                func.lower(func.trim(models.Department.code)) == selected_department.lower(),
+            )
+        ).first()
+        dept_conds = [
+            func.lower(func.trim(models.StudentFeedback.department)) == selected_department.lower(),
+        ]
+        if dept_canon:
+            dept_conds.append(func.lower(func.trim(models.StudentFeedback.department)) == dept_canon.lower())
+        if dept_rec:
+            dept_conds.extend([
+                models.StudentFeedback.department_id == dept_rec.id,
+                func.lower(func.trim(models.StudentFeedback.department)) == dept_rec.code.lower(),
+                func.lower(func.trim(models.StudentFeedback.department)) == dept_rec.name.lower(),
+            ])
+        query = query.filter(or_(*dept_conds))
+
+    # 3. Semester filter
+    if semester and semester.strip() and semester.strip().lower() not in {"all", "all semesters", "all_semesters"}:
+        sem_clean = semester.strip()
+        norm_sem = services.normalize_semester(sem_clean)
+        query = query.filter(
+            or_(
+                func.lower(func.trim(models.StudentFeedback.semester)) == sem_clean.lower(),
+                func.lower(func.trim(models.StudentFeedback.semester)) == (norm_sem or "").lower(),
+            )
+        )
+
+    # 4. Subject filter
+    if subject and subject.strip() and subject.strip().lower() not in {"all", "all subjects", "all_subjects"}:
+        query = query.filter(func.lower(func.trim(models.StudentFeedback.subject)) == subject.strip().lower())
+
+    # 5. Section filter (legacy check)
+    if effective_sec and effective_sec.strip() and effective_sec.strip().lower() not in {"all", "all sections", "all_sections"}:
+        query = query.filter(models.StudentFeedback.id == -1)
 
     fields = (
         "teaching_quality",
+        "communication_skills",
+        "student_interaction",
+        "overall_satisfaction",
         "course_content",
         "learning_resources",
         "faculty_support",
-        "overall_satisfaction",
+        "subject_knowledge",
+        "overall_rating",
     )
     records = query.order_by(models.StudentFeedback.created_at.asc()).all()
     rows = [tuple(getattr(record, field) for field in fields) for record in records]
@@ -564,17 +209,34 @@ def get_student_feedback_summary(
     rating_counts = {field: 0 for field in fields}
     for row in rows:
         for field, rating in zip(fields, row):
-            if isinstance(rating, int) and 1 <= rating <= 5:
+            if isinstance(rating, int) and 1 <= rating <= 10:
                 totals[field] += rating
                 rating_counts[field] += 1
-                distributions[field][rating] += 1
+                if 1 <= rating <= 5:
+                    distributions[field][rating] += 1
 
     averages = {
-        field: round(total / rating_counts[field], 2) if rating_counts[field] else None
-        for field, total in totals.items()
+        field: round(totals[field] / rating_counts[field], 2) if rating_counts[field] else None
+        for field in fields
     }
+
+    # Course difficulty counts
+    difficulty_counts = {"Easy": 0, "Moderate": 0, "Hard": 0}
+    for record in records:
+        diff = (record.course_difficulty or "").strip().capitalize()
+        if diff in difficulty_counts:
+            difficulty_counts[diff] += 1
+        elif "easy" in diff.lower():
+            difficulty_counts["Easy"] += 1
+        elif "mod" in diff.lower():
+            difficulty_counts["Moderate"] += 1
+        elif "hard" in diff.lower() or "diff" in diff.lower():
+            difficulty_counts["Hard"] += 1
+
     by_day = {}
     for record in records:
+        if not record.created_at:
+            continue
         day = record.created_at.date().isoformat()
         bucket = by_day.setdefault(
             day,
@@ -583,9 +245,10 @@ def get_student_feedback_summary(
         bucket["responses"] += 1
         for field in fields:
             rating = getattr(record, field)
-            if isinstance(rating, int) and 1 <= rating <= 5:
+            if isinstance(rating, int) and 1 <= rating <= 10:
                 bucket[field] += rating
                 bucket[f"{field}_count"] += 1
+
     timeline = [
         {"date": day, "responses": bucket["responses"], **{
             field: (
@@ -594,348 +257,120 @@ def get_student_feedback_summary(
             )
             for field in fields
         }}
-        for day, bucket in by_day.items()
+        for day, bucket in sorted(by_day.items())
     ]
+
+    # Overall Learning Experience metrics
+    overall_ratings = [
+        r.overall_satisfaction
+        for r in records
+        if isinstance(r.overall_satisfaction, int) and 1 <= r.overall_satisfaction <= 5
+    ]
+    avg_overall = round(sum(overall_ratings) / len(overall_ratings), 2) if overall_ratings else None
+    rating_dist = {i: 0 for i in range(1, 6)}
+    for r in overall_ratings:
+        rating_dist[r] += 1
+
+    # Most frequently selected improvement areas
+    area_counts = {area: 0 for area in services.STANDARD_IMPROVEMENT_AREAS}
+    for record in records:
+        areas = services.load_stored_improvement_areas(record.improvement_areas)
+        for a in areas:
+            if a in area_counts:
+                area_counts[a] += 1
+            else:
+                area_counts[a] = area_counts.get(a, 0) + 1
+
+    total_count = len(records)
+    improvement_areas_summary = [
+        {
+            "area": area,
+            "count": count,
+            "percentage": round((count / total_count) * 100, 1) if total_count else 0.0,
+        }
+        for area, count in sorted(area_counts.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    # Optional student suggestions
+    student_suggestions = []
+    for record in records:
+        text = (record.suggestions or record.comment or record.comments or "").strip()
+        if text:
+            student_suggestions.append({
+                "id": record.id,
+                "suggestion": text,
+                "department": record.department,
+                "semester": record.semester,
+                "academic_year": record.academic_year,
+                "rating": record.overall_satisfaction,
+                "created_at": record.created_at.strftime("%d %b %Y, %H:%M") if record.created_at else None,
+            })
+
+    # Dynamic filter lists
+    all_fb = db.query(models.StudentFeedback).all()
+    available_years = sorted(list({f.academic_year for f in all_fb if f.academic_year and f.academic_year.strip()}), reverse=True)
+    for yr in ["2025-2026", "2024-2025"]:
+        if yr not in available_years:
+            available_years.append(yr)
+
+    dept_set = set()
+    for f in all_fb:
+        if f.department and f.department.strip():
+            d = f.department.strip()
+            if d.lower() in {"computer science and engineering", "cse"}:
+                dept_set.add("CSE")
+            elif d.lower() in {"ai & data science", "ai and data science", "aids"}:
+                dept_set.add("AI & Data Science")
+            elif d.lower() in {"bca", "bachelor of computer applications"}:
+                dept_set.add("BCA")
+            else:
+                dept_set.add(d)
+    dept_set.update(["CSE", "AI & Data Science"])
+    available_depts = sorted(list(dept_set))
+
+    sem_set = {f.semester for f in all_fb if f.semester and f.semester.strip()}
+    sem_set.update(["Semester 1", "Semester 2", "Semester 3", "Semester 4"])
+    available_sems = sorted(list(sem_set))
+
+    available_subjs = sorted(list({f.subject for f in all_fb if f.subject and f.subject.strip()}))
+
     return {
-        "academic_year": norm_year,
+        "academic_year": norm_year or academic_year,
         "department": selected_department,
         "total_responses": len(rows),
         "all_responses": all_responses,
         "unattributed_responses": unattributed_responses,
-        "other_year_responses": max(0, all_responses - selected_year_responses - unattributed_responses),
+        "other_year_responses": max(0, all_responses - len(rows) - unattributed_responses),
         "averages": averages,
         "rating_distributions": distributions,
         "timeline": timeline,
+        "difficulty_distribution": difficulty_counts,
+        "available_departments": available_depts,
+        "available_academic_years": available_years,
+        "available_semesters": available_sems,
+        "available_subjects": available_subjs,
+        "average_overall_satisfaction": avg_overall,
+        "rating_distribution": rating_dist,
+        "improvement_areas_summary": improvement_areas_summary,
+        "student_suggestions": student_suggestions,
     }
 
 
-@app.get("/api/admin/feedback/faculty", response_model=schemas.FacultyFeedbackSummaryResponse)
-@app.get("/api/feedback/faculty", response_model=schemas.FacultyFeedbackSummaryResponse)
-def get_faculty_feedback(
-    academic_year: Optional[str] = None,
-    department: Optional[str] = None,
+@app.post("/api/admin/feedback/import-google-sheet", response_model=schemas.GoogleSheetImportSummary)
+@app.post("/api/feedback/import-google-sheet", response_model=schemas.GoogleSheetImportSummary)
+def import_google_sheet_feedback_endpoint(
     db: Session = Depends(database.get_db),
-    _: models.AdminUser = Depends(get_current_admin),
+    admin: models.AdminUser = Depends(get_current_admin),
 ):
-    """Return read-only, anonymous faculty feedback and ratings for administrators."""
+    """Admin-only endpoint to import student feedback responses from Google Sheets."""
     try:
-        norm_year = services.normalize_academic_year(academic_year)
-    except ValueError as error:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
-    selected_department = department.strip() if department and department.strip() else None
-    selected_department_record = None
-    if selected_department:
-        selected_department_record = db.query(models.Department).filter(
-            or_(
-                func.lower(func.trim(models.Department.name)) == selected_department.casefold(),
-                func.lower(func.trim(models.Department.code)) == selected_department.casefold(),
-            )
-        ).first()
-
-    feedback_query = db.query(models.StudentFeedback)
-    if norm_year:
-        feedback_query = feedback_query.filter(models.StudentFeedback.academic_year == norm_year)
-    if selected_department:
-        department_filters = [models.StudentFeedback.department == selected_department]
-        if selected_department_record:
-            department_filters.extend([
-                models.StudentFeedback.department_id == selected_department_record.id,
-                models.StudentFeedback.department == selected_department_record.name,
-                models.StudentFeedback.department == selected_department_record.code,
-            ])
-        feedback_query = feedback_query.filter(or_(*department_filters))
-    records = feedback_query.order_by(models.StudentFeedback.created_at.desc(), models.StudentFeedback.id.desc()).all()
-
-    unassigned_year_query = db.query(models.StudentFeedback).filter(
-        or_(models.StudentFeedback.academic_year.is_(None), func.trim(models.StudentFeedback.academic_year) == "")
-    )
-    if selected_department:
-        unassigned_year_query = unassigned_year_query.filter(
-            or_(
-                models.StudentFeedback.department == selected_department,
-                func.trim(models.StudentFeedback.department) == "",
-                *(
-                    [
-                        models.StudentFeedback.department_id == selected_department_record.id,
-                        models.StudentFeedback.department == selected_department_record.name,
-                        models.StudentFeedback.department == selected_department_record.code,
-                    ]
-                    if selected_department_record else []
-                ),
-            )
+        summary = services.import_google_sheet_feedback(db)
+        return summary
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to import feedback from Google Sheets: {str(exc)}",
         )
-    unassigned_year_records = unassigned_year_query.order_by(
-        models.StudentFeedback.created_at.desc(), models.StudentFeedback.id.desc()
-    ).all()
-
-    all_faculty_records = db.query(models.Faculty).order_by(models.Faculty.department, models.Faculty.name).all()
-    department_records = db.query(models.Department).all()
-    faculty_department_labels = {}
-    for faculty in all_faculty_records:
-        faculty_department = (faculty.department or "").strip().casefold()
-        department_record = next(
-            (
-                item for item in department_records
-                if faculty_department in {
-                    (item.name or "").strip().casefold(),
-                    (item.code or "").strip().casefold(),
-                }
-            ),
-            None,
-        )
-        faculty_department_labels[faculty.faculty_id] = (
-            department_record.name if department_record else faculty.department
-        )
-    available_departments = sorted({
-        label for label in faculty_department_labels.values() if label
-    })
-    faculty_records = all_faculty_records
-    if selected_department:
-        faculty_records = [
-            faculty for faculty in faculty_records
-            if (
-                _department_matches_faculty(selected_department_record, faculty)
-                if selected_department_record
-                else faculty.department == selected_department
-            )
-        ]
-    faculty_by_id = {faculty.faculty_id: faculty for faculty in faculty_records}
-
-    associated = {faculty_id: [] for faculty_id in faculty_by_id}
-    unassigned_faculty_records = []
-    for record in records:
-        if not (record.academic_year or "").strip():
-            continue
-        faculty = faculty_by_id.get(record.faculty_id)
-        if faculty is None:
-            unassigned_faculty_records.append(record)
-            continue
-        associated[faculty.faculty_id].append(record)
-
-    distribution = {rating: 0 for rating in range(0, 11)}
-    department_totals = {}
-    faculty_results = []
-    overall_rating_total = 0
-    overall_rating_count = 0
-    departments_with_feedback = set()
-    for faculty in faculty_records:
-        faculty_feedback = associated[faculty.faculty_id]
-        valid_ratings = [
-            (
-                record.overall_rating
-                if isinstance(record.overall_rating, int)
-                and 0 <= record.overall_rating <= 10
-                else record.faculty_rating
-            )
-            for record in faculty_feedback
-            if (
-                isinstance(record.overall_rating, int)
-                and 0 <= record.overall_rating <= 10
-            ) or (
-                isinstance(record.faculty_rating, int)
-                and 0 <= record.faculty_rating <= 10
-            )
-        ]
-        rating_total = sum(valid_ratings)
-        rating_count = len(valid_ratings)
-        average = round(rating_total / rating_count, 2) if rating_count else None
-        comments = [
-            schemas.FacultyFeedbackComment(
-                comment=record.comments if record.comments is not None else record.comment,
-                faculty_rating=(
-                    record.overall_rating
-                    if record.overall_rating in range(0, 11)
-                    else record.faculty_rating
-                    if record.faculty_rating in range(0, 11)
-                    else None
-                ),
-                teaching_quality=record.teaching_quality,
-                subject_knowledge=(
-                    record.subject_knowledge
-                    if record.subject_knowledge is not None
-                    else record.course_content
-                ),
-                communication_skills=(
-                    record.communication_skills
-                    if record.communication_skills is not None
-                    else record.learning_resources
-                ),
-                student_interaction=(
-                    record.student_interaction
-                    if record.student_interaction is not None
-                    else record.faculty_support
-                ),
-                criteria_rating_scale=(
-                    10
-                    if any(value is not None for value in (
-                        record.subject_knowledge,
-                        record.communication_skills,
-                        record.student_interaction,
-                    ))
-                    else 5
-                ),
-                subject=record.subject,
-                created_at=record.created_at.isoformat() if record.created_at else None,
-            )
-            for record in faculty_feedback
-        ]
-        faculty_results.append(schemas.FacultyFeedbackItem(
-            faculty_id=faculty.faculty_id,
-            name=faculty.name,
-            department=faculty_department_labels[faculty.faculty_id],
-            designation=faculty.designation,
-            response_count=len(faculty_feedback),
-            rating_count=rating_count,
-            average_rating=average,
-            feedback=comments,
-        ))
-        if faculty_feedback:
-            departments_with_feedback.add(faculty_department_labels[faculty.faculty_id])
-        for rating in valid_ratings:
-            distribution[rating] += 1
-        department_bucket = department_totals.setdefault(
-            faculty_department_labels[faculty.faculty_id],
-            {"rating_total": 0, "rating_count": 0, "response_count": 0},
-        )
-        department_bucket["response_count"] += len(faculty_feedback)
-        department_bucket["rating_total"] += rating_total
-        department_bucket["rating_count"] += rating_count
-        if rating_count:
-            overall_rating_total += rating_total
-            overall_rating_count += rating_count
-
-    ranked_faculty = sorted(
-        (item for item in faculty_results if item.average_rating is not None),
-        key=lambda item: (-item.average_rating, item.name.casefold(), item.faculty_id),
-    )
-    department_results = [
-        schemas.FacultyDepartmentRating(
-            department=name,
-            response_count=values["response_count"],
-            average_rating=(
-                round(values["rating_total"] / values["rating_count"], 2)
-                if values["rating_count"] else None
-            ),
-        )
-        for name, values in sorted(department_totals.items())
-    ]
-    return schemas.FacultyFeedbackSummaryResponse(
-        academic_year=norm_year,
-        department=selected_department,
-        total_responses=len(records),
-        unassigned_year_responses=len(unassigned_year_records),
-        unassigned_faculty_responses=len(unassigned_faculty_records),
-        total_faculty=sum(item.response_count > 0 for item in faculty_results),
-        total_departments=len(departments_with_feedback),
-        overall_average_rating=(
-            round(overall_rating_total / overall_rating_count, 2) if overall_rating_count else None
-        ),
-        highest_rated_faculty=ranked_faculty[0] if ranked_faculty else None,
-        rating_distribution=distribution,
-        available_departments=available_departments,
-        departments=department_results,
-        faculty=faculty_results,
-        unassigned_year_feedback=[
-            schemas.UnassignedFeedbackItem(
-                academic_year=(record.academic_year or "").strip() or None,
-                department=(record.department or "").strip() or None,
-                comment=record.comment,
-                created_at=record.created_at.isoformat() if record.created_at else None,
-            )
-            for record in unassigned_year_records
-        ],
-        unassigned_faculty_feedback=[
-            schemas.UnassignedFeedbackItem(
-                academic_year=(record.academic_year or "").strip() or None,
-                department=(record.department or "").strip() or None,
-                comment=record.comment,
-                created_at=record.created_at.isoformat() if record.created_at else None,
-            )
-            for record in unassigned_faculty_records
-        ],
-    )
-
-
-@app.get("/api/admin/feedback/departments")
-def get_admin_feedback_departments(
-    academic_year: Optional[str] = None,
-    department_id: Optional[int] = Query(None, gt=0),
-    db: Session = Depends(database.get_db),
-    admin: models.AdminUser = Depends(get_current_admin),
-):
-    selected_department = None
-    if department_id is not None:
-        selected_department = db.query(models.Department).filter(
-            models.Department.id == department_id
-        ).first()
-        if selected_department is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department was not found.")
-    summary = get_faculty_feedback(
-        academic_year=academic_year,
-        department=selected_department.name if selected_department else None,
-        db=db,
-        _=admin,
-    )
-    rated_departments = {item.department: item for item in summary.departments}
-    department_rows = []
-    departments = (
-        [selected_department]
-        if selected_department
-        else db.query(models.Department).order_by(models.Department.name).all()
-    )
-    for department in departments:
-        matched_rating = next(
-            (
-                rated for name, rated in rated_departments.items()
-                if name.casefold() in {
-                    department.name.casefold(),
-                    department.code.casefold(),
-                }
-            ),
-            None,
-        )
-        department_rows.append({
-            "department_id": department.id,
-            "department": department.name,
-            "response_count": matched_rating.response_count if matched_rating else 0,
-            "average_rating": matched_rating.average_rating if matched_rating else None,
-        })
-    return {
-        "academic_year": summary.academic_year,
-        "department_id": selected_department.id if selected_department else None,
-        "departments": department_rows,
-        "total_responses": summary.total_responses,
-    }
-
-
-@app.get("/api/admin/feedback/ratings")
-def get_admin_feedback_ratings(
-    academic_year: Optional[str] = None,
-    department_id: Optional[int] = Query(None, gt=0),
-    db: Session = Depends(database.get_db),
-    admin: models.AdminUser = Depends(get_current_admin),
-):
-    selected_department = None
-    if department_id is not None:
-        selected_department = db.query(models.Department).filter(
-            models.Department.id == department_id
-        ).first()
-        if selected_department is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department was not found.")
-    summary = get_faculty_feedback(
-        academic_year=academic_year,
-        department=selected_department.name if selected_department else None,
-        db=db,
-        _=admin,
-    )
-    return {
-        "academic_year": summary.academic_year,
-        "department_id": selected_department.id if selected_department else None,
-        "total_responses": summary.total_responses,
-        "valid_rating_count": sum(summary.rating_distribution.values()),
-        "average_rating": summary.overall_average_rating,
-        "rating_distribution": summary.rating_distribution,
-    }
 
 
 @app.get("/api/kpis/summary", response_model=schemas.KPISummaryResponse)

@@ -518,7 +518,12 @@ export default function KPIDashboardPage() {
               </div>
             </div>
           ) : selectedKPI === 'Student Feedback Improvement' ? (
-            <StudentFeedbackKPI academicYear={selectedAcademicYear} department={activeSectionInfo.department} section={activeSectionInfo.section} />
+            <StudentFeedbackKPI
+              academicYear={selectedAcademicYear}
+              department={activeSectionInfo.department}
+              section={activeSectionInfo.section}
+              onAcademicYearChange={setSelectedAcademicYear}
+            />
           ) : (
             <div className="relative overflow-hidden bg-[#FFFFFF] border border-[#E2E8F0] rounded-3xl p-6 sm:p-8 shadow-sm">
               <div className="relative min-h-[420px] flex flex-col items-center justify-center text-center">

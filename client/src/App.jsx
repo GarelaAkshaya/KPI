@@ -5,10 +5,6 @@ import HomePage from './pages/HomePage';
 import KPIDashboardPage from './pages/KPIDashboardPage';
 import StudentUploadPage from './pages/StudentUploadPage';
 import FacultyDataPage from './pages/FacultyDataPage';
-import StudentFeedbackPage from './pages/StudentFeedbackPage';
-import StudentFeedbackPortal from './pages/StudentFeedbackPortal';
-import FeedbackDashboardPage from './pages/FeedbackDashboardPage';
-import FacultyFeedbackPage from './pages/FacultyFeedbackPage';
 import DepartmentOverviewPage from './pages/DepartmentOverviewPage';
 import { getStoredAuthToken } from './api';
 
@@ -31,10 +27,6 @@ export default function App() {
       <Route path="/faculty" element={<ProtectedRoute><FacultyDataPage /></ProtectedRoute>} />
       <Route path="/departments" element={<ProtectedRoute><DepartmentOverviewPage /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><KPIDashboardPage /></ProtectedRoute>} />
-      <Route path="/feedback" element={<StudentFeedbackPage />} />
-      <Route path="/student-feedback" element={<StudentFeedbackPortal />} />
-      <Route path="/feedback/dashboard" element={<ProtectedRoute><FeedbackDashboardPage /></ProtectedRoute>} />
-      <Route path="/feedback/view" element={<ProtectedRoute><FacultyFeedbackPage /></ProtectedRoute>} />
       {/* Catch-all fallback route */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

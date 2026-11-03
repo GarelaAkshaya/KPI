@@ -208,6 +208,11 @@ class StudentFeedback(Base):
     faculty_support = Column(Integer, nullable=True)
     overall_satisfaction = Column(Integer, nullable=True)
     comment = Column(Text, nullable=True)
+    semester = Column(String, nullable=True, index=True)
+    course_difficulty = Column(String, nullable=True)
+    google_sheet_response_hash = Column(String, nullable=True, index=True)
+    improvement_areas = Column(Text, nullable=True)
+    suggestions = Column(Text, nullable=True)
 
 
 class AnonymousFeedbackToken(Base):

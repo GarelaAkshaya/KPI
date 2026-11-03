@@ -228,78 +228,20 @@ class StudentAttendanceSchema(StudentAttendanceBase):
 
 
 # Student Feedback Schemas
-class StudentFeedbackCreate(BaseModel):
-    class Config:
-        extra = "ignore"
-
-    token: str = Field(..., min_length=16, max_length=128)
-    subject: str = Field(..., min_length=1, max_length=256)
-    teaching_quality: int = Field(..., ge=1, le=5)
-    subject_knowledge: int = Field(..., ge=1, le=5)
-    communication_skills: int = Field(..., ge=1, le=5)
-    student_interaction: int = Field(..., ge=1, le=5)
-    overall_rating: int = Field(..., ge=1, le=10)
-    comments: Optional[str] = Field(None, max_length=4000)
+class ImprovementAreaItem(BaseModel):
+    area: str
+    count: int
+    percentage: float
 
 
-class FeedbackCodeValidationRequest(BaseModel):
-    token: str = Field(..., min_length=16, max_length=128)
-
-
-class PublicFeedbackTokenRequest(BaseModel):
-    feedback_code: str = Field(..., min_length=16, max_length=128)
-    faculty_id: str = Field(..., min_length=1, max_length=128)
-    department_id: int = Field(..., ge=1)
-    academic_year: str = Field(..., min_length=4, max_length=16)
-
-
-class PublicStudentFeedbackCreate(PublicFeedbackTokenRequest):
-    subject: str = Field(..., min_length=1, max_length=256)
-    teaching_quality: int = Field(..., ge=0, le=10, strict=True)
-    subject_knowledge: int = Field(..., ge=0, le=10, strict=True)
-    communication_skills: int = Field(..., ge=0, le=10, strict=True)
-    student_interaction: int = Field(..., ge=0, le=10, strict=True)
-    overall_rating: int = Field(..., ge=0, le=10, strict=True)
-    comments: Optional[str] = Field(None, max_length=4000)
-
-    @field_validator("subject")
-    @classmethod
-    def subject_must_not_be_blank(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("Subject cannot be blank.")
-        return normalized
-
-
-class PublicFeedbackFaculty(BaseModel):
-    faculty_id: str
-    name: str
-    designation: Optional[str] = None
-    department_id: int
-
-
-class PublicFeedbackDepartment(BaseModel):
+class StudentSuggestionItem(BaseModel):
     id: int
-    code: str
-    name: str
-
-
-class FeedbackCodeValidationResponse(BaseModel):
-    academic_year: str
-    faculty_id: str
-    faculty_name: str
-    department: str
-    designation: Optional[str] = None
-
-
-class FeedbackCodeIssueRequest(BaseModel):
-    academic_year: str
-    faculty_id: str = Field(..., min_length=1, max_length=128)
-    count: int = Field(..., ge=1, le=10000)
-
-
-class StudentFeedbackSubmissionResponse(BaseModel):
-    message: str
+    suggestion: str
+    department: Optional[str] = None
+    semester: Optional[str] = None
+    academic_year: Optional[str] = None
+    rating: Optional[int] = None
+    created_at: Optional[str] = None
 
 
 class StudentFeedbackSummaryResponse(BaseModel):
@@ -310,63 +252,29 @@ class StudentFeedbackSummaryResponse(BaseModel):
     averages: dict[str, Optional[float]]
     rating_distributions: dict[str, dict[int, int]]
     timeline: list[dict[str, object]] = []
-
-
-class FacultyFeedbackComment(BaseModel):
-    comment: Optional[str] = None
-    faculty_rating: Optional[int] = None
-    teaching_quality: Optional[int] = None
-    subject_knowledge: Optional[int] = None
-    communication_skills: Optional[int] = None
-    student_interaction: Optional[int] = None
-    criteria_rating_scale: int = 10
-    subject: Optional[str] = None
-    created_at: Optional[str] = None
-
-
-class FacultyFeedbackItem(BaseModel):
-    faculty_id: str
-    name: str
-    department: str
-    designation: Optional[str] = None
-    response_count: int
-    rating_count: int
-    average_rating: Optional[float] = None
-    feedback: list[FacultyFeedbackComment]
-
-
-class UnassignedFeedbackItem(BaseModel):
     academic_year: Optional[str] = None
     department: Optional[str] = None
-    comment: Optional[str] = None
-    created_at: Optional[str] = None
+    difficulty_distribution: Optional[dict[str, int]] = None
+    available_departments: Optional[list[str]] = []
+    available_academic_years: Optional[list[str]] = []
+    available_semesters: Optional[list[str]] = []
+    available_subjects: Optional[list[str]] = []
+    average_overall_satisfaction: Optional[float] = None
+    rating_distribution: Optional[dict[int, int]] = None
+    improvement_areas_summary: Optional[list[ImprovementAreaItem]] = []
+    student_suggestions: Optional[list[StudentSuggestionItem]] = []
 
 
-class FacultyDepartmentRating(BaseModel):
-    department: str
-    response_count: int
-    average_rating: Optional[float] = None
+class GoogleSheetImportSummary(BaseModel):
+    status: str
+    imported: int
+    skipped: int
+    failed: int
+    total_rows: int
+    message: str
+    errors: Optional[list[str]] = []
 
 
-class FacultyFeedbackSummaryResponse(BaseModel):
-    academic_year: Optional[str] = None
-    department: Optional[str] = None
-    total_responses: int
-    unassigned_year_responses: int
-    unassigned_faculty_responses: int
-    total_faculty: int
-    total_departments: int = 0
-    overall_average_rating: Optional[float] = None
-    highest_rated_faculty: Optional[FacultyFeedbackItem] = None
-    rating_distribution: dict[int, int]
-    available_departments: list[str]
-    departments: list[FacultyDepartmentRating]
-    faculty: list[FacultyFeedbackItem]
-    unassigned_year_feedback: list[UnassignedFeedbackItem]
-    unassigned_faculty_feedback: list[UnassignedFeedbackItem]
-
-
-# Laboratory Utilization Schemas
 class LaboratoryUtilizationBase(BaseModel):
     laboratory_name: str
     department: str

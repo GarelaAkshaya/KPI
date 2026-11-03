@@ -134,7 +134,9 @@ def parse_percentage_value(value: Any) -> Optional[float]:
 def normalize_academic_year(year: Optional[str]) -> Optional[str]:
     if not year:
         return None
-    val = str(year).strip()
+    val = re.sub(r"\s+", "", str(year).strip().replace("–", "-").replace("—", "-").replace("/", "-"))
+    if val.lower() in {"all", "allyears", "all_years"}:
+        return None
     if val in {"2024-2025", "2024-25", "2024–2025", "2024/2025"}:
         return "2024-2025"
     if val in {"2025-2026", "2025-26", "2025–2026", "2025/2026"}:
@@ -2765,3 +2767,366 @@ def seed_aids_faculty(db: Session) -> int:
         db.rollback()
         raise
     return added
+
+
+def normalize_feedback_header(header: str) -> str:
+    """Normalize a feedback column header by stripping extra spaces and lowercasing."""
+    if not header:
+        return ""
+    return re.sub(r"\s+", " ", str(header).strip()).lower()
+
+
+def parse_google_forms_timestamp(ts_val: Any) -> datetime:
+    """Parse Google Forms timestamp strings robustly into datetime."""
+    if not ts_val:
+        return datetime.utcnow()
+    if isinstance(ts_val, datetime):
+        return ts_val
+    ts_str = str(ts_val).strip()
+    if not ts_str:
+        return datetime.utcnow()
+
+    ts_clean = re.sub(r"\s*GMT[+-]\d+(?::\d+)?", "", ts_str).strip()
+    formats = [
+        "%Y/%m/%d %I:%M:%S %p",
+        "%Y/%m/%d %H:%M:%S",
+        "%m/%d/%Y %I:%M:%S %p",
+        "%m/%d/%Y %H:%M:%S",
+        "%d/%m/%Y %I:%M:%S %p",
+        "%d/%m/%Y %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+        "%m/%d/%Y",
+        "%d/%m/%Y",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(ts_clean, fmt)
+        except ValueError:
+            pass
+
+    try:
+        parsed = pd.to_datetime(ts_str)
+        if pd.notna(parsed):
+            return parsed.to_pydatetime()
+    except Exception:
+        pass
+
+    return datetime.utcnow()
+
+
+def parse_feedback_rating(val: Any) -> Optional[int]:
+    """Parse rating to integer between 1 and 10 (standard 1-5)."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    try:
+        n = int(float(s))
+        if 0 <= n <= 10:
+            return n
+    except (ValueError, TypeError):
+        pass
+    m = re.search(r"\b([0-9]|10)\b", s)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def extract_course_difficulty(
+    easy_val: str = "",
+    mod_val: str = "",
+    hard_val: str = "",
+    gen_val: str = "",
+) -> Optional[str]:
+    """Determine course difficulty (Easy, Moderate, or Hard)."""
+    def is_truthy(v: str) -> bool:
+        return bool(v and str(v).strip().lower() not in {"", "no", "false", "0", "none", "n/a", "-"})
+
+    marked_easy = is_truthy(easy_val)
+    marked_mod = is_truthy(mod_val)
+    marked_hard = is_truthy(hard_val)
+
+    if marked_easy and not marked_mod and not marked_hard:
+        return "Easy"
+    if marked_mod and not marked_easy and not marked_hard:
+        return "Moderate"
+    if marked_hard and not marked_easy and not marked_mod:
+        return "Hard"
+
+    combined = f"{easy_val} {mod_val} {hard_val} {gen_val}".lower()
+    if "easy" in combined:
+        return "Easy"
+    if "moderate" in combined or "medium" in combined:
+        return "Moderate"
+    if "hard" in combined or "difficult" in combined:
+        return "Hard"
+
+    return None
+
+
+STANDARD_IMPROVEMENT_AREAS = [
+    "Teaching methods and explanation of concepts",
+    "More practical learning and hands-on activities",
+    "More assignments and practice questions",
+    "More real-world examples and case studies",
+    "More interactive classroom activities",
+    "No improvements needed",
+]
+
+
+def parse_improvement_areas(raw_value) -> list[str]:
+    """Parse checkbox choices from Google Forms response."""
+    if not raw_value:
+        return []
+    text = str(raw_value).strip()
+    if not text:
+        return []
+    found = []
+    # Google Forms separates multiple checkboxes with comma + space
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+    for p in parts:
+        matched = False
+        for std in STANDARD_IMPROVEMENT_AREAS:
+            if p.lower() == std.lower():
+                found.append(std)
+                matched = True
+                break
+        if not matched and p:
+            found.append(p)
+    return found
+
+
+def load_stored_improvement_areas(val) -> list[str]:
+    """Load improvement areas from JSON or string."""
+    if not val:
+        return []
+    try:
+        parsed = json.loads(val)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed if item]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return [p.strip() for p in str(val).split(",") if p.strip()]
+
+def map_feedback_headers(raw_headers: List[Any]) -> Dict[int, str]:
+    """Map raw Google Sheet column indices to logical field names."""
+    field_map = {}
+    for idx, raw_h in enumerate(raw_headers):
+        clean_h = normalize_feedback_header(raw_h)
+        if not clean_h:
+            continue
+        if "timestamp" in clean_h:
+            field_map[idx] = "timestamp"
+        elif "department" in clean_h:
+            field_map[idx] = "department"
+        elif "academic year" in clean_h or "academic_year" in clean_h:
+            field_map[idx] = "academic_year"
+        elif "semester" in clean_h:
+            field_map[idx] = "semester"
+        elif "subject" in clean_h:
+            field_map[idx] = "subject"
+        elif "teaching" in clean_h:
+            field_map[idx] = "teaching_quality"
+        elif "communication" in clean_h:
+            field_map[idx] = "communication_skills"
+        elif "doubt" in clean_h or "clarification" in clean_h:
+            field_map[idx] = "student_interaction"
+        elif "difficulty" in clean_h and "easy" in clean_h:
+            field_map[idx] = "difficulty_easy"
+        elif "difficulty" in clean_h and ("moderate" in clean_h or "medium" in clean_h):
+            field_map[idx] = "difficulty_moderate"
+        elif "difficulty" in clean_h and ("hard" in clean_h or "difficult" in clean_h):
+            field_map[idx] = "difficulty_hard"
+        elif "additional suggestions" in clean_h or "suggestions" in clean_h or "suggestion" in clean_h:
+            field_map[idx] = "suggestions"
+        elif "what areas" in clean_h or "areas do you think should be improved" in clean_h or "improvement" in clean_h:
+            field_map[idx] = "improvement_areas"
+        elif "overall learning" in clean_h or "overall satisfaction" in clean_h or clean_h.startswith("overall") or clean_h == "learning experience":
+            field_map[idx] = "overall_satisfaction"
+        elif "difficulty" in clean_h:
+            field_map[idx] = "difficulty_general"
+    return field_map
+
+
+def import_google_sheet_feedback(
+    db: Session,
+    raw_rows: Optional[List[List[Any]]] = None,
+) -> Dict[str, Any]:
+    """
+    Import student feedback from Google Sheets into the student_feedback table.
+    Prevents duplicate submissions using google_sheet_response_hash.
+    """
+    if raw_rows is None:
+        try:
+            from google_sheets_service import fetch_google_sheet_feedback_rows
+            raw_rows = fetch_google_sheet_feedback_rows()
+        except Exception as exc:
+            raise RuntimeError(f"Could not connect to Google Sheets: {exc}")
+
+    if not raw_rows or len(raw_rows) <= 1:
+        return {
+            "status": "success",
+            "imported": 0,
+            "skipped": 0,
+            "failed": 0,
+            "total_rows": 0,
+            "message": "No response rows found in Google Sheet (only header row present).",
+            "errors": [],
+        }
+
+    raw_headers = raw_rows[0]
+    header_map = map_feedback_headers(raw_headers)
+
+    imported = 0
+    skipped = 0
+    failed = 0
+    errors = []
+
+    existing_hashes = {
+        h[0]
+        for h in db.query(models.StudentFeedback.google_sheet_response_hash)
+        .filter(models.StudentFeedback.google_sheet_response_hash.isnot(None))
+        .all()
+    }
+
+    departments = db.query(models.Department).all()
+
+    for row_idx, row_values in enumerate(raw_rows[1:], start=2):
+        try:
+            row_dict = {}
+            for col_idx, col_name in enumerate(raw_headers):
+                val = row_values[col_idx] if col_idx < len(row_values) else ""
+                field_key = header_map.get(col_idx)
+                if field_key:
+                    row_dict[field_key] = str(val).strip() if val is not None else ""
+
+            if not any(row_dict.values()):
+                continue
+
+            raw_ts = row_dict.get("timestamp", "")
+            raw_dept = row_dict.get("department", "")
+            raw_year = row_dict.get("academic_year", "")
+            raw_sem = row_dict.get("semester", "")
+            raw_subj = row_dict.get("subject", "")
+
+            norm_year = None
+            if raw_year:
+                try:
+                    norm_year = normalize_academic_year(raw_year)
+                except ValueError:
+                    m = re.search(r"(20\d\d)[-–/](20\d\d|\d\d)", raw_year)
+                    if m:
+                        start_yr = int(m.group(1))
+                        end_part = m.group(2)
+                        end_yr = int(end_part) if len(end_part) == 4 else int(str(start_yr)[:2] + end_part)
+                        norm_year = f"{start_yr}-{end_yr}"
+                    else:
+                        norm_year = raw_year
+            if not norm_year:
+                norm_year = "2025-2026"
+
+            norm_sem = normalize_semester(raw_sem) if raw_sem else None
+            norm_dept = canonicalize_department_name(raw_dept) if raw_dept else None
+            dept_name = norm_dept or raw_dept or None
+
+            dept_id = None
+            if dept_name:
+                for d in departments:
+                    if d.code.lower() == dept_name.lower() or d.name.lower() == dept_name.lower():
+                        dept_id = d.id
+                        break
+
+            subj_name = raw_subj.strip() if raw_subj else None
+
+            tq = parse_feedback_rating(row_dict.get("teaching_quality"))
+            cs = parse_feedback_rating(row_dict.get("communication_skills"))
+            si = parse_feedback_rating(row_dict.get("student_interaction"))
+            os_val = parse_feedback_rating(row_dict.get("overall_satisfaction"))
+
+            difficulty = extract_course_difficulty(
+                easy_val=row_dict.get("difficulty_easy", ""),
+                mod_val=row_dict.get("difficulty_moderate", ""),
+                hard_val=row_dict.get("difficulty_hard", ""),
+                gen_val=row_dict.get("difficulty_general", ""),
+            )
+
+            raw_improvements = row_dict.get("improvement_areas", "")
+            parsed_areas = parse_improvement_areas(raw_improvements)
+            improvement_areas_json = json.dumps(parsed_areas, ensure_ascii=False) if parsed_areas else None
+
+            raw_suggestions = row_dict.get("suggestions", "").strip() or None
+
+            # Support both old and new form responses: require at least one useful piece of feedback or valid department & year
+            if not any([os_val, tq, cs, si, subj_name, difficulty, parsed_areas, raw_suggestions, dept_name]):
+                continue
+
+            parsed_ts = parse_google_forms_timestamp(raw_ts)
+            canonical_ts = parsed_ts.strftime("%Y-%m-%d %H:%M:%S") if raw_ts else ""
+            canonical_areas = ",".join(sorted(parsed_areas)) if parsed_areas else (raw_improvements or "").strip()
+            canonical_sugg = (raw_suggestions or "").strip()
+
+            hash_payload = (
+                f"{raw_ts}|{dept_name}|{norm_year}|{norm_sem}|{subj_name}|"
+                f"{tq}|{cs}|{si}|{os_val}|{difficulty}|{raw_improvements}|{raw_suggestions}"
+            )
+            response_hash = hashlib.sha256(hash_payload.encode("utf-8")).hexdigest()
+
+            alt_payload = (
+                f"{canonical_ts}|{dept_name}|{norm_year}|{norm_sem}|{subj_name}|"
+                f"{tq}|{cs}|{si}|{os_val}|{difficulty}|{canonical_areas}|{canonical_sugg}"
+            )
+            alt_hash = hashlib.sha256(alt_payload.encode("utf-8")).hexdigest()
+
+            if response_hash in existing_hashes or alt_hash in existing_hashes:
+                skipped += 1
+                continue
+
+            feedback_record = models.StudentFeedback(
+                faculty_id=None,
+                department_id=dept_id,
+                department=dept_name,
+                academic_year=norm_year,
+                semester=norm_sem,
+                subject=subj_name,
+                teaching_quality=tq,
+                communication_skills=cs,
+                student_interaction=si,
+                overall_satisfaction=os_val,
+                overall_rating=os_val,
+                course_difficulty=difficulty,
+                improvement_areas=improvement_areas_json,
+                suggestions=raw_suggestions,
+                comment=raw_suggestions,
+                comments=raw_suggestions,
+                token_id=None,
+                created_at=parsed_ts,
+                google_sheet_response_hash=response_hash,
+            )
+            db.add(feedback_record)
+            existing_hashes.add(response_hash)
+            existing_hashes.add(alt_hash)
+            imported += 1
+
+        except Exception as row_exc:
+            failed += 1
+            errors.append(f"Row {row_idx}: {str(row_exc)}")
+
+    try:
+        db.commit()
+    except Exception as commit_exc:
+        db.rollback()
+        raise RuntimeError(f"Database error while saving imported feedback: {commit_exc}")
+
+    total_data_rows = len(raw_rows) - 1
+    return {
+        "status": "success",
+        "imported": imported,
+        "skipped": skipped,
+        "failed": failed,
+        "total_rows": total_data_rows,
+        "message": f"Successfully processed {total_data_rows} responses: {imported} imported, {skipped} skipped (duplicates), {failed} failed.",
+        "errors": errors,
+    }
