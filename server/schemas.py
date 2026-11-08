@@ -155,7 +155,8 @@ class DepartmentSchema(DepartmentBase):
 class DepartmentOverviewItem(BaseModel):
     name: str
     studentCount: int
-    facultyCount: int
+    facultyCount: Union[int, str]
+    hod: Optional[str] = None
 
 
 class SectionFilterOption(BaseModel):

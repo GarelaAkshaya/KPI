@@ -3,6 +3,13 @@ import Navbar from '../components/Navbar';
 import { Building2, Loader2, AlertCircle, Users, UserCheck } from 'lucide-react';
 import { API_BASE_URL, apiFetch } from '../api';
 
+const HOD_MAP = {
+  'Computer Science and Engineering': 'Dr. P. Rohini',
+  'CSE': 'Dr. P. Rohini',
+  'AI & Data Science': 'Dr. P. Pavan Kumar',
+  'AIDS': 'Dr. P. Pavan Kumar',
+};
+
 export default function DepartmentOverviewPage() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -94,6 +101,15 @@ export default function DepartmentOverviewPage() {
                   {department.name}
                 </h2>
 
+                {(department.hod || HOD_MAP[department.name]) && (
+                  <div className="mt-2 flex items-center gap-2 text-xs sm:text-sm font-medium text-slate-600">
+                    <span className="font-semibold text-slate-400">Head of Department:</span>
+                    <span className="font-bold text-slate-800">
+                      {department.hod || HOD_MAP[department.name]}
+                    </span>
+                  </div>
+                )}
+
                 <div className="mt-6 grid grid-cols-2 gap-4">
                   <div className="rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] p-4">
                     <div className="flex items-center gap-2 text-[#64748B] text-xs font-semibold uppercase tracking-[0.08em]">
@@ -110,8 +126,14 @@ export default function DepartmentOverviewPage() {
                       <UserCheck className="h-4 w-4 text-[#10B981]" />
                       Faculty
                     </div>
-                    <p className="mt-3 text-3xl font-extrabold text-[#0F172A]">
-                      {department.facultyCount ?? 0}
+                    <p
+                      className={`mt-3 font-extrabold text-[#0F172A] ${
+                        department.name === 'BCA' || department.facultyCount === 'Shared Faculty'
+                          ? 'text-xl sm:text-2xl pt-1'
+                          : 'text-3xl'
+                      }`}
+                    >
+                      {department.name === 'BCA' ? 'Shared Faculty' : (department.facultyCount ?? 0)}
                     </p>
                   </div>
                 </div>

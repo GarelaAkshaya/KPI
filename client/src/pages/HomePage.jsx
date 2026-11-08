@@ -91,7 +91,7 @@ export default function HomePage() {
       buttonBg: "bg-[#2563EB] hover:bg-[#1D4ED8]",
     },
     {
-      title: "Upload Faculty Data",
+      title: "Faculty Management",
       description: "Manage faculty profiles, research outputs, qualifications, workload, and performance metrics.",
       icon: UserCheck,
       badgeText: "Academic Ops",

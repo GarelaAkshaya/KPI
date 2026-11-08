@@ -332,7 +332,8 @@ export default function StudentUploadPage() {
       if (!Array.isArray(data)) throw new Error('Invalid response from server.');
       const processed = processStudentRecords(data);
       setStudents(processed);
-      setTotalStudents(processed.length);
+      const uniqueCount = new Set(processed.map((s) => String(s.studentId ?? s.enrollment_number ?? '').trim()).filter(Boolean)).size;
+      setTotalStudents(uniqueCount);
     } catch (err) {
       setFetchMarksError(err.message || 'Error fetching students');
     } finally {
@@ -406,6 +407,14 @@ export default function StudentUploadPage() {
       return yearMatches && departmentMatches && sectionMatches && semesterMatches;
     });
   }, [students, marksFilterYear, marksFilterDepartment, marksFilterSection, marksFilterSemester]);
+
+  const uniqueFilteredStudentsCount = React.useMemo(() => {
+    return new Set(
+      filteredStudents
+        .map((s) => String(s.studentId ?? s.enrollment_number ?? '').trim())
+        .filter(Boolean)
+    ).size;
+  }, [filteredStudents]);
 
   const filteredAttendance = React.useMemo(() => {
     return attendanceList.filter((a) => {
@@ -922,7 +931,7 @@ export default function StudentUploadPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="rounded-xl bg-[#EFF6FF] border border-[#DBEAFE] px-4 py-2 text-sm text-[#1E293B]">
                     <span className="text-[#64748B]">Showing Students: </span>
-                    <span className="font-semibold text-[#2563EB]">{filteredStudents.length}</span>
+                    <span className="font-semibold text-[#2563EB]">{uniqueFilteredStudentsCount}</span>
                     <span className="text-xs text-[#64748B] ml-2">({marksFilterYear === 'All' ? 'All Years' : marksFilterYear} • {marksFilterSemester === 'All' ? 'All Semesters' : marksFilterSemester})</span>
                   </div>
 

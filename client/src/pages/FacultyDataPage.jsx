@@ -194,18 +194,6 @@ export default function FacultyDataPage() {
                   </option>
                 </select>
               </label>
-              {selectedDepartment === 'AI & Data Science' && (
-                <button
-                  type="button"
-                  onClick={handleImportAidsFaculty}
-                  disabled={importingFaculty}
-                  className="rounded-lg bg-[#2563EB] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {importingFaculty ? 'Importing Faculty...' : 'Import AI&DS Faculty'}
-                </button>
-              )}
-              {importMessage && <p role="status" className="text-sm text-emerald-700">{importMessage}</p>}
-              {importError && <p role="alert" className="text-sm text-red-700">{importError}</p>}
             </div>
           </div>
 

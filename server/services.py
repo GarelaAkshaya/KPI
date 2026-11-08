@@ -1985,11 +1985,17 @@ def get_department_overview(db: Session) -> List[Dict[str, Any]]:
             continue
         faculty_sets[normalized].add(unique_key.lower())
 
+    hod_map = {
+        "Computer Science and Engineering": "Dr. P. Rohini",
+        "AI & Data Science": "Dr. P. Pavan Kumar",
+    }
+
     return [
         {
             "name": name,
             "studentCount": len(student_sets[name]),
-            "facultyCount": len(faculty_sets[name]),
+            "facultyCount": "Shared Faculty" if name == "BCA" else len(faculty_sets[name]),
+            "hod": hod_map.get(name),
         }
         for name in target_departments
     ]

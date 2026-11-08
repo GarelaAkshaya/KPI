@@ -520,8 +520,6 @@ export default function KPIDashboardPage() {
           ) : selectedKPI === 'Student Feedback Improvement' ? (
             <StudentFeedbackKPI
               academicYear={selectedAcademicYear}
-              department={activeSectionInfo.department}
-              section={activeSectionInfo.section}
               onAcademicYearChange={setSelectedAcademicYear}
             />
           ) : (

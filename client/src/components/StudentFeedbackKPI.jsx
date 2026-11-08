@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Lightbulb,
-  MessageCircle,
   BarChart3,
   TrendingUp,
   Layers,
@@ -25,7 +24,7 @@ export default function StudentFeedbackKPI({
   onAcademicYearChange,
 }) {
   // Filter States: Department, Academic Year, Semester
-  const [selectedYear, setSelectedYear] = useState(academicYear || 'All');
+  const [selectedYear, setSelectedYear] = useState(academicYear || '2025-2026');
   const [selectedDepartment, setSelectedDepartment] = useState(department || 'All');
   const [selectedSemester, setSelectedSemester] = useState('All');
 
@@ -43,7 +42,7 @@ export default function StudentFeedbackKPI({
 
   // Synchronize prop updates
   useEffect(() => {
-    if (academicYear && academicYear !== selectedYear && selectedYear !== 'All') {
+    if (academicYear && academicYear !== selectedYear) {
       setSelectedYear(academicYear);
     }
   }, [academicYear]);
@@ -62,7 +61,6 @@ export default function StudentFeedbackKPI({
         if (selectedYear && selectedYear !== 'All') params.set('academic_year', selectedYear);
         if (selectedDepartment && selectedDepartment !== 'All') params.set('department', selectedDepartment);
         if (selectedSemester && selectedSemester !== 'All') params.set('semester', selectedSemester);
-        if (section) params.set('section', section);
 
         const response = await apiFetch(`${API_BASE_URL}/api/feedback/summary?${params.toString()}`, { signal });
         if (!response.ok) throw new Error(`Feedback data could not be loaded (HTTP ${response.status}).`);
@@ -79,7 +77,7 @@ export default function StudentFeedbackKPI({
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [selectedYear, selectedDepartment, selectedSemester, section]
+    [selectedYear, selectedDepartment, selectedSemester]
   );
 
   useEffect(() => {
@@ -175,11 +173,6 @@ export default function StudentFeedbackKPI({
     return sorted[0].count > 0 ? sorted[0] : null;
   }, [improvementAreas]);
 
-  // 4. Student suggestions
-  const suggestions = useMemo(() => {
-    return Array.isArray(summary?.student_suggestions) ? summary.student_suggestions : [];
-  }, [summary]);
-
   return (
     <div className="space-y-6 rounded-3xl border border-[#E2E8F0] bg-white p-5 shadow-sm sm:p-8">
       {/* Header & Main Actions */}
@@ -192,7 +185,7 @@ export default function StudentFeedbackKPI({
             Student Academic Feedback
           </h3>
           <p className="mt-1 text-sm text-[#64748B]">
-            Overall learning experience ratings, improvement areas, and student suggestions from Google Forms.
+            Overall learning experience ratings and improvement areas from Google Forms.
           </p>
         </div>
 
@@ -373,7 +366,7 @@ export default function StudentFeedbackKPI({
       </div>
 
       {/* Quick Summary Cards */}
-      <section className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4" aria-label="Feedback overview metrics">
+      <section className="grid gap-3.5 sm:grid-cols-3 lg:grid-cols-3" aria-label="Feedback overview metrics">
         <article className="rounded-2xl border border-[#DBEAFE] bg-[#EFF6FF] p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-[#2563EB]">Total Feedback Submissions</p>
           <p className="mt-2 text-3xl font-extrabold text-[#1D4ED8]">{total}</p>
@@ -403,12 +396,6 @@ export default function StudentFeedbackKPI({
           <p className="mt-1 text-xs text-amber-800">
             {topImprovement ? `${topImprovement.count} votes (${topImprovement.percentage}%)` : 'No votes recorded'}
           </p>
-        </article>
-
-        <article className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-[#64748B]">Student Suggestions</p>
-          <p className="mt-2 text-3xl font-extrabold text-[#1E293B]">{suggestions.length}</p>
-          <p className="mt-1 text-xs text-[#64748B]">Qualitative feedback notes</p>
         </article>
       </section>
 
@@ -620,69 +607,6 @@ export default function StudentFeedbackKPI({
                       </div>
                     );
                   })}
-                </div>
-              )}
-            </section>
-
-            {/* 4. Optional Student Suggestions & Qualitative Feedback */}
-            <section className="rounded-3xl border border-[#E2E8F0] bg-white p-5 sm:p-7 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 pb-4 border-b border-[#F1F5F9]">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4 text-[#2563EB]" />
-                    <h4 className="text-base font-bold text-[#1E293B]">
-                      Student Suggestions & Comments
-                    </h4>
-                  </div>
-                  <p className="text-xs text-[#64748B] mt-0.5">
-                    Direct feedback and improvement suggestions submitted in the optional paragraph field.
-                  </p>
-                </div>
-                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#EFF6FF] text-[#2563EB]">
-                  {suggestions.length} {suggestions.length === 1 ? 'Suggestion' : 'Suggestions'}
-                </span>
-              </div>
-
-              {!suggestions.length ? (
-                <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-8 text-center">
-                  <p className="text-xs text-[#64748B]">
-                    No additional suggestions submitted yet for the selected scope.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid gap-3.5 sm:grid-cols-2">
-                  {suggestions.map((item) => (
-                    <article
-                      key={item.id}
-                      className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 flex flex-col justify-between hover:border-[#93C5FD] transition-colors"
-                    >
-                      <p className="text-xs leading-relaxed text-[#334155] italic">
-                        "{item.suggestion}"
-                      </p>
-
-                      <div className="mt-3.5 pt-2.5 border-t border-[#E2E8F0] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#64748B]">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-[#1E293B]">
-                            {item.department || selectedDepartment}
-                          </span>
-                          {item.semester && <span>· {item.semester}</span>}
-                          {item.academic_year && <span>· {item.academic_year}</span>}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {item.rating && (
-                            <span className="flex items-center gap-0.5 text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                              <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                              {item.rating}/5
-                            </span>
-                          )}
-                          {item.created_at && (
-                            <span className="text-[10px] text-[#94A3B8]">{item.created_at}</span>
-                          )}
-                        </div>
-                      </div>
-                    </article>
-                  ))}
                 </div>
               )}
             </section>

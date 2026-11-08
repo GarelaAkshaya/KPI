@@ -1,6 +1,7 @@
 import csv
 import io
 import os
+import re
 import secrets
 import threading
 import time
@@ -146,24 +147,54 @@ def get_student_feedback_summary(
 
     # 1. Year filter
     if norm_year:
-        query = query.filter(models.StudentFeedback.academic_year == norm_year)
+        query = query.filter(
+            or_(
+                models.StudentFeedback.academic_year == norm_year,
+                models.StudentFeedback.academic_year == norm_year.replace("-", " - "),
+                models.StudentFeedback.academic_year == norm_year.replace("-", "–"),
+                models.StudentFeedback.academic_year == norm_year.replace("-", " – "),
+                func.replace(func.replace(models.StudentFeedback.academic_year, " ", ""), "–", "-") == norm_year,
+            )
+        )
 
     # 2. Department filter
     selected_department = None
     if effective_dept and effective_dept.strip() and effective_dept.strip().lower() not in {"all", "all departments", "all_departments"}:
         selected_department = effective_dept.strip()
         dept_canon = services.canonicalize_department_name(selected_department)
+        dept_conds = [
+            func.lower(func.trim(models.StudentFeedback.department)) == selected_department.lower(),
+        ]
+        if dept_canon:
+            dept_conds.append(func.lower(func.trim(models.StudentFeedback.department)) == dept_canon.lower())
+
+        # Also match standard department abbreviations and naming variations
+        sd_upper = selected_department.upper()
+        if sd_upper in {"CSE", "COMPUTER SCIENCE AND ENGINEERING", "COMPUTER SCIENCE & ENGINEERING"}:
+            dept_conds.extend([
+                func.lower(func.trim(models.StudentFeedback.department)) == "cse",
+                func.lower(func.trim(models.StudentFeedback.department)) == "computer science and engineering",
+                func.lower(func.trim(models.StudentFeedback.department)) == "computer science & engineering",
+            ])
+        elif sd_upper in {"AIDS", "AI & DATA SCIENCE", "AI AND DATA SCIENCE", "ARTIFICIAL INTELLIGENCE AND DATA SCIENCE"}:
+            dept_conds.extend([
+                func.lower(func.trim(models.StudentFeedback.department)) == "aids",
+                func.lower(func.trim(models.StudentFeedback.department)) == "ai & data science",
+                func.lower(func.trim(models.StudentFeedback.department)) == "ai and data science",
+                func.lower(func.trim(models.StudentFeedback.department)) == "artificial intelligence and data science",
+            ])
+        elif sd_upper in {"BCA", "BACHELOR OF COMPUTER APPLICATIONS"}:
+            dept_conds.extend([
+                func.lower(func.trim(models.StudentFeedback.department)) == "bca",
+                func.lower(func.trim(models.StudentFeedback.department)) == "bachelor of computer applications",
+            ])
+
         dept_rec = db.query(models.Department).filter(
             or_(
                 func.lower(func.trim(models.Department.name)) == selected_department.lower(),
                 func.lower(func.trim(models.Department.code)) == selected_department.lower(),
             )
         ).first()
-        dept_conds = [
-            func.lower(func.trim(models.StudentFeedback.department)) == selected_department.lower(),
-        ]
-        if dept_canon:
-            dept_conds.append(func.lower(func.trim(models.StudentFeedback.department)) == dept_canon.lower())
         if dept_rec:
             dept_conds.extend([
                 models.StudentFeedback.department_id == dept_rec.id,
@@ -176,20 +207,23 @@ def get_student_feedback_summary(
     if semester and semester.strip() and semester.strip().lower() not in {"all", "all semesters", "all_semesters"}:
         sem_clean = semester.strip()
         norm_sem = services.normalize_semester(sem_clean)
-        query = query.filter(
-            or_(
-                func.lower(func.trim(models.StudentFeedback.semester)) == sem_clean.lower(),
-                func.lower(func.trim(models.StudentFeedback.semester)) == (norm_sem or "").lower(),
-            )
-        )
+        digit_match = re.search(r"\d+", sem_clean)
+        digit = digit_match.group(0) if digit_match else None
+        sem_conds = [
+            func.lower(func.trim(models.StudentFeedback.semester)) == sem_clean.lower(),
+            func.lower(func.trim(models.StudentFeedback.semester)) == (norm_sem or "").lower(),
+        ]
+        if digit:
+            sem_conds.extend([
+                func.trim(models.StudentFeedback.semester) == digit,
+                func.lower(func.trim(models.StudentFeedback.semester)) == f"semester {digit}",
+                func.lower(func.trim(models.StudentFeedback.semester)) == f"sem {digit}",
+            ])
+        query = query.filter(or_(*sem_conds))
 
     # 4. Subject filter
     if subject and subject.strip() and subject.strip().lower() not in {"all", "all subjects", "all_subjects"}:
         query = query.filter(func.lower(func.trim(models.StudentFeedback.subject)) == subject.strip().lower())
-
-    # 5. Section filter (legacy check)
-    if effective_sec and effective_sec.strip() and effective_sec.strip().lower() not in {"all", "all sections", "all_sections"}:
-        query = query.filter(models.StudentFeedback.id == -1)
 
     fields = (
         "teaching_quality",
